@@ -99,6 +99,24 @@ class DashboardService {
 
     const remainingDebt = totalContractPrice - paidAmount;
 
+    // ✅ YANGI: Umumiy zapas (prepaid balance) hisoblash
+    const [prepaidBalanceData] = await Contract.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalPrepaidBalance: { $sum: { $ifNull: ["$prepaidBalance", 0] } },
+        },
+      },
+      { $project: { _id: 0, totalPrepaidBalance: 1 } },
+    ]);
+
+    const totalPrepaidBalance = prepaidBalanceData?.totalPrepaidBalance || 0;
+
+    // ✅ YANGI: Zapas bo'lgan shartnomalar soni
+    const contractsWithPrepaid = await Contract.countDocuments({
+      prepaidBalance: { $gt: 0 },
+    });
+
     const result = {
       status: "success",
       data: {
@@ -117,6 +135,8 @@ class DashboardService {
           initialPayment,
           paidAmount,
           remainingDebt,
+          totalPrepaidBalance, // ✅ YANGI: Umumiy zapas
+          contractsWithPrepaid, // ✅ YANGI: Zapas bo'lgan shartnomalar soni
         },
       },
     };

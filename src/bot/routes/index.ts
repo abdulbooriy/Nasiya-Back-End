@@ -9,6 +9,7 @@ import notesRoute from "./notes.routes";
 import expensesRoute from "./expenses.routes";
 import contractRoute from "./contract.routes";
 import notificationRoute from "./notification.routes";
+import prepaidRoute from "./prepaid.routes";
 
 const routes = Router();
 
@@ -21,5 +22,6 @@ routes.use("/dashboard", botManager, dashboardRoute);
 routes.use("/notes", botManager, notesRoute);
 routes.use("/expenses", botManager, expensesRoute);
 routes.use("/notifications", botManager, notificationRoute);
+routes.use("/prepaid", botManager, prepaidRoute);
 
 export default routes;

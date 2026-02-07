@@ -16,7 +16,7 @@ class DebtorController {
       const { startDate, endDate } = req.query;
       const data = await debtorService.getContract(
         startDate as string,
-        endDate as string
+        endDate as string,
       );
       res.status(200).json(data);
     } catch (error) {
@@ -60,10 +60,33 @@ class DebtorController {
           },
           currencyCourse: 12500,
         },
-        user
+        user,
       );
 
       res.status(200).json(data);
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  async getDebtsForCustomer(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { customerId } = req.params;
+      const { filter } = req.query;
+
+      if (!customerId) {
+        return res
+          .status(400)
+          .json({ success: false, message: "customerId is required" });
+      }
+
+      const data = await debtorService.getFilteredDebts(
+        customerId as string,
+        (filter as string) || "all",
+      );
+
+      res.status(200).json(data);
+      
     } catch (error) {
       return next(error);
     }

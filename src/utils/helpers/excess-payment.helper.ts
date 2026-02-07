@@ -1,9 +1,15 @@
+// ❌ COMMENTED OUT: Avtomatik to'lov yaratish funksiyasi
+// Keyinchalik kerak bo'lsa ishlatish mumkin
+// Hozirda zapas oddiy matn sifatida saqlanadi
+
+/*
 import Payment, {
   PaymentStatus,
   PaymentType,
 } from "../../schemas/payment.schema";
 import Notes from "../../schemas/notes.schema";
 import IJwtUser from "../../types/user";
+*/
 import logger from "../../utils/logger";
 
 /**
@@ -11,10 +17,8 @@ import logger from "../../utils/logger";
  * Ortiqcha to'lovlarni qayta ishlash uchun yordamchi funksiyalar
  */
 export class ExcessPaymentHelper {
-  /**
-   * Ortiqcha to'lovni qayta ishlash
-   * Keyingi oylar uchun avtomatik to'lovlar yaratish
-   */
+  /*
+  // ❌ COMMENTED: Avtomatik to'lov yaratish
   static async processExcessPayment(
     excessAmount: number,
     contract: any,
@@ -27,7 +31,7 @@ export class ExcessPaymentHelper {
       return createdPayments;
     }
 
-    logger.debug(`💰 Processing excess amount: ${excessAmount.toFixed(2)} $`);
+    logger.debug(`💰 Processing excess amount: ${excessAmount.toFixed(2)}`);
 
     let remainingExcess = excessAmount;
     const monthlyPayment = contract.monthlyPayment;
@@ -71,7 +75,7 @@ export class ExcessPaymentHelper {
       const notes = await Notes.create({
         text: `${monthNumber}-oy to'lovi (ortiqcha summadan): ${paymentAmount.toFixed(
           2
-        )} $${
+        )} ${
           shortageAmount > 0
             ? `\n⚠️ ${shortageAmount.toFixed(2)} $ kam to'landi`
             : ""
@@ -96,7 +100,7 @@ export class ExcessPaymentHelper {
         excessAmount: 0,
         confirmedAt: new Date(),
         confirmedBy: user.sub,
-        targetMonth: monthNumber, // ✅ FIXED: targetMonth qo'shildi
+        targetMonth: monthNumber,
       });
 
       createdPayments.push(newPayment);
@@ -120,7 +124,7 @@ export class ExcessPaymentHelper {
     if (remainingExcess > 0.01) {
       contract.prepaidBalance = (contract.prepaidBalance || 0) + remainingExcess;
       logger.debug(
-        `💰 Prepaid balance updated: ${contract.prepaidBalance.toFixed(2)} $`
+        `💰 Prepaid balance updated: ${contract.prepaidBalance.toFixed(2)}`
       );
       logger.debug(
         `ℹ️ Remaining ${remainingExcess.toFixed(
@@ -134,5 +138,26 @@ export class ExcessPaymentHelper {
     );
 
     return createdPayments;
+  }
+  */
+
+  /**
+   * ✅ YANGI: Oddiy zapas funksiyasi
+   * Ortiqcha to'lovni shunchaki prepaidBalance ga qo'shish
+   * Hech qanday avtomatik to'lov yaratilmaydi
+   */
+  static async addToPrepaidBalance(
+    excessAmount: number,
+    contract: any,
+  ): Promise<void> {
+    if (excessAmount <= 0.01) {
+      return;
+    }
+
+    // Ortiqcha summani prepaidBalance ga qo'shish
+    contract.prepaidBalance = (contract.prepaidBalance || 0) + excessAmount;
+
+    logger.debug(`💰 Zapas qo'shildi: ${excessAmount.toFixed(2)} $`);
+    logger.debug(`💎 Jami zapas: ${contract.prepaidBalance.toFixed(2)} $`);
   }
 }

@@ -9,7 +9,6 @@ import { Types } from "mongoose";
 
 class CustomerService {
   async getAll(user: IJwtUser) {
-
     const totalCustomers = await Customer.countDocuments({
       isActive: true,
       isDeleted: false,
@@ -26,7 +25,6 @@ class CustomerService {
       isDeleted: false,
       manager: user.sub,
     }).select("fullName _id phoneNumber");
-
 
     if (customers.length > 0) {
       logger.debug("Sample customer:", {
@@ -46,7 +44,7 @@ class CustomerService {
       let filterEndDate: Date;
 
       if (filterDate && filterDate.trim() !== "") {
-        const [year, month, day] = filterDate.split('-').map(Number);
+        const [year, month, day] = filterDate.split("-").map(Number);
         filterEndDate = new Date(year, month - 1, day, 23, 59, 59, 999);
       } else {
         // Default: bugungi kun
@@ -74,7 +72,9 @@ class CustomerService {
             as: "customerData",
           },
         },
-        { $unwind: { path: "$customerData", preserveNullAndEmptyArrays: false } },
+        {
+          $unwind: { path: "$customerData", preserveNullAndEmptyArrays: false },
+        },
 
         {
           $match: {
@@ -98,9 +98,9 @@ class CustomerService {
             nextPaymentDate: {
               $exists: true,
               $ne: null,
-              $lte: filterEndDate
-            }
-          }
+              $lte: filterEndDate,
+            },
+          },
         },
 
         {
@@ -110,10 +110,10 @@ class CustomerService {
               $filter: {
                 input: "$paymentDetails",
                 as: "p",
-                cond: { $eq: ["$$p.isPaid", false] }
-              }
-            }
-          }
+                cond: { $eq: ["$$p.isPaid", false] },
+              },
+            },
+          },
         },
         {
           $addFields: {
@@ -130,19 +130,29 @@ class CustomerService {
                         // Date'larni string formatda taqqoslash
                         {
                           $eq: [
-                            { $dateToString: { format: "%Y-%m-%d", date: "$$p.date" } },
-                            { $dateToString: { format: "%Y-%m-%d", date: "$nextPaymentDate" } }
-                          ]
+                            {
+                              $dateToString: {
+                                format: "%Y-%m-%d",
+                                date: "$$p.date",
+                              },
+                            },
+                            {
+                              $dateToString: {
+                                format: "%Y-%m-%d",
+                                date: "$nextPaymentDate",
+                              },
+                            },
+                          ],
                         },
-                        { $eq: ["$$p.paymentType", "monthly"] }
-                      ]
-                    }
-                  }
+                        { $eq: ["$$p.paymentType", "monthly"] },
+                      ],
+                    },
+                  },
                 },
-                0
-              ]
-            }
-          }
+                0,
+              ],
+            },
+          },
         },
 
         {
@@ -152,9 +162,9 @@ class CustomerService {
               { "nextPaymentData.reminderDate": { $exists: false } },
               { "nextPaymentData.reminderDate": null },
               // yoki reminderDate o'tgan (bugundan kichik yoki teng)
-              { "nextPaymentData.reminderDate": { $lte: currentDate } }
-            ]
-          }
+              { "nextPaymentData.reminderDate": { $lte: currentDate } },
+            ],
+          },
         },
 
         {
@@ -182,7 +192,7 @@ class CustomerService {
                   cond: {
                     $and: [
                       { $eq: ["$$p.isPaid", true] },
-                      { $eq: ["$$p.paymentType", "monthly"] }
+                      { $eq: ["$$p.paymentType", "monthly"] },
                     ],
                   },
                 },
@@ -194,10 +204,7 @@ class CustomerService {
         {
           $addFields: {
             remainingDebt: {
-              $subtract: [
-                { $ifNull: ["$totalPrice", "$price"] },
-                "$totalPaid"
-              ],
+              $subtract: [{ $ifNull: ["$totalPrice", "$price"] }, "$totalPaid"],
             },
             delayDays: {
               $floor: {
@@ -206,12 +213,12 @@ class CustomerService {
                   1000 * 60 * 60 * 24,
                 ],
               },
-            }
-          }
+            },
+          },
         },
 
         {
-          $match: { remainingDebt: { $gt: 0 } }
+          $match: { remainingDebt: { $gt: 0 } },
         },
 
         {
@@ -243,21 +250,20 @@ class CustomerService {
                       cond: {
                         $and: [
                           { $eq: ["$$p.status", "PENDING"] },
-                          { $eq: ["$$p.isPaid", false] }
-                        ]
-                      }
-                    }
-                  }
+                          { $eq: ["$$p.isPaid", false] },
+                        ],
+                      },
+                    },
+                  },
                 },
-                0
-              ]
-            }
+                0,
+              ],
+            },
           },
         },
 
         { $sort: { delayDays: -1, remainingDebt: -1 } },
       ]);
-
 
       if (result.length > 0) {
         logger.debug(`✅ Qarzdorlar ro'yxati (reminderDate filtr bilan):`, {
@@ -266,11 +272,13 @@ class CustomerService {
             name: result[0].fullName,
             remainingDebt: result[0].remainingDebt,
             delayDays: result[0].delayDays,
-            nextPaymentDate: result[0].nextPaymentDate
-          }
+            nextPaymentDate: result[0].nextPaymentDate,
+          },
         });
       } else {
-        logger.debug(`✅ Qarzdorlar topilmadi (hamma eslatma qo'ygan bo'lishi mumkin)`);
+        logger.debug(
+          `✅ Qarzdorlar topilmadi (hamma eslatma qo'ygan bo'lishi mumkin)`,
+        );
       }
 
       return { status: "success", data: result };
@@ -281,7 +289,6 @@ class CustomerService {
 
   async getPaidDebtors(user: IJwtUser) {
     try {
-
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       thirtyDaysAgo.setHours(0, 0, 0, 0);
@@ -376,8 +383,8 @@ class CustomerService {
         },
         {
           $addFields: {
-            remainingDebt: { $subtract: ["$totalPrice", "$totalPaid"] }
-          }
+            remainingDebt: { $subtract: ["$totalPrice", "$totalPaid"] },
+          },
         },
         { $sort: { lastPaymentDate: -1 } },
       ]);
@@ -390,8 +397,6 @@ class CustomerService {
 
   async getById(user: IJwtUser, customerId: string) {
     try {
-
-
       const customerData = await Customer.aggregate([
         {
           $match: {
@@ -412,11 +417,11 @@ class CustomerService {
                     $and: [
                       { $eq: ["$customer", "$$customerId"] },
                       { $eq: ["$isDeleted", false] },
-                      { $eq: ["$isActive", true] }
-                    ]
-                  }
-                }
-              }
+                      { $eq: ["$isActive", true] },
+                    ],
+                  },
+                },
+              },
             ],
             as: "contracts",
           },
@@ -450,7 +455,9 @@ class CustomerService {
                 $map: {
                   input: "$payments",
                   as: "payment",
-                  in: { $ifNull: ["$$payment.actualAmount", "$$payment.amount"] }, // ✅ TUZATILDI: to'g'ri format
+                  in: {
+                    $ifNull: ["$$payment.actualAmount", "$$payment.amount"],
+                  }, // ✅ TUZATILDI: to'g'ri format
                 },
               },
             },
@@ -521,18 +528,30 @@ class CustomerService {
             totalPaid: 1,
             remainingDebt: 1,
             delayDays: 1,
+            contracts: {
+              $map: {
+                input: "$contracts",
+                as: "contract",
+                in: {
+                  _id: "$$contract._id",
+                  customId: "$$contract.customId",
+                  productName: "$$contract.productName",
+                  prepaidBalance: "$$contract.prepaidBalance",
+                  totalPrice: "$$contract.totalPrice",
+                  monthlyPayment: "$$contract.monthlyPayment",
+                  period: "$$contract.period",
+                },
+              },
+            },
           },
         },
       ]);
 
-
       if (!customerData.length) {
         throw BaseError.NotFoundError(
-          "Mijoz topilmadi yoki sizga tegishli emas"
+          "Mijoz topilmadi yoki sizga tegishli emas",
         );
       }
-
-
 
       return {
         status: "success",
@@ -544,8 +563,6 @@ class CustomerService {
   }
 
   async getCustomerContracts(customerId: string) {
-
-
     const allContracts = await Contract.aggregate([
       {
         $match: {
@@ -572,7 +589,7 @@ class CustomerService {
                     input: "$paymentDetails",
                     as: "p",
                     cond: {
-                      $eq: ["$$p.isPaid", true]
+                      $eq: ["$$p.isPaid", true],
                     },
                   },
                 },
@@ -591,6 +608,7 @@ class CustomerService {
       {
         $project: {
           _id: 1,
+          customId: 1,
           productName: 1,
           totalDebt: 1,
           totalPaid: 1,
@@ -605,6 +623,7 @@ class CustomerService {
           postponedAt: 1,
           isPostponedOnce: 1,
           originalPaymentDay: 1,
+          prepaidBalance: 1,
           durationMonths: "$period",
           payments: {
             $map: {
@@ -634,7 +653,7 @@ class CustomerService {
                 cond: {
                   $and: [
                     { $eq: ["$$p.isPaid", true] },
-                    { $eq: ["$$p.paymentType", "monthly"] }
+                    { $eq: ["$$p.paymentType", "monthly"] },
                   ],
                 },
               },
@@ -650,19 +669,18 @@ class CustomerService {
                     cond: {
                       $and: [
                         { $eq: ["$$p.isPaid", true] },
-                        { $eq: ["$$p.paymentType", "monthly"] }
+                        { $eq: ["$$p.paymentType", "monthly"] },
                       ],
                     },
                   },
                 },
               },
-              "$period"
-            ]
+              "$period",
+            ],
           },
         },
       },
     ]);
-
 
     const debtorContractsRaw = await Debtor.aggregate([
       {
@@ -676,11 +694,11 @@ class CustomerService {
                   $and: [
                     { $eq: ["$_id", "$$contractId"] },
                     { $eq: ["$isDeleted", false] },
-                    { $eq: ["$isActive", true] }
-                  ]
-                }
-              }
-            }
+                    { $eq: ["$isActive", true] },
+                  ],
+                },
+              },
+            },
           ],
           as: "contract",
         },
@@ -756,7 +774,7 @@ class CustomerService {
                 cond: {
                   $and: [
                     { $eq: ["$$p.isPaid", true] },
-                    { $eq: ["$$p.paymentType", "monthly"] }
+                    { $eq: ["$$p.paymentType", "monthly"] },
                   ],
                 },
               },
@@ -787,14 +805,15 @@ class CustomerService {
       },
     ]);
 
-    const completedContracts = allContracts.filter((c) => c.isCompleted === true);
+    const completedContracts = allContracts.filter(
+      (c) => c.isCompleted === true,
+    );
     const activeContracts = allContracts.filter((c) => c.isCompleted === false);
 
     const paidContracts = debtorContractsRaw.filter((c) => c.isPaid === true);
     const debtorContracts = debtorContractsRaw.filter(
-      (c) => c.isPaid === false
+      (c) => c.isPaid === false,
     );
-
 
     const response = {
       status: "success",

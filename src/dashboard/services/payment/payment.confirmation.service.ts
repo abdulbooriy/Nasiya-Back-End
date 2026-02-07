@@ -1,12 +1,15 @@
 /**
  * Payment Confirmation Service
- * 
+ *
  * Kassa operatsiyalari - To'lovlarni tasdiqlash va rad etish
  * Extends PaymentBaseService for common functionality
  */
 
 import { PaymentBaseService } from "./payment.base.service";
-import Payment, { PaymentStatus, PaymentType } from "../../../schemas/payment.schema";
+import Payment, {
+  PaymentStatus,
+  PaymentType,
+} from "../../../schemas/payment.schema";
 import Contract, { ContractStatus } from "../../../schemas/contract.schema";
 import { Debtor } from "../../../schemas/debtor.schema";
 import Notes from "../../../schemas/notes.schema";
@@ -57,15 +60,22 @@ export class PaymentConfirmationService extends PaymentBaseService {
       const actualAmount = payment.actualAmount || payment.amount;
       const expectedAmount = payment.expectedAmount || payment.amount;
 
-      const paymentAmounts = calculatePaymentAmounts(actualAmount, expectedAmount);
+      const paymentAmounts = calculatePaymentAmounts(
+        actualAmount,
+        expectedAmount,
+      );
       payment.status = paymentAmounts.status;
       payment.remainingAmount = paymentAmounts.remainingAmount;
       payment.excessAmount = paymentAmounts.excessAmount;
 
       if (payment.status === PaymentStatus.UNDERPAID) {
-        logger.debug(`⚠️ UNDERPAID: ${payment.remainingAmount.toFixed(2)}$ kam to'landi`);
+        logger.debug(
+          `⚠️ UNDERPAID: ${payment.remainingAmount.toFixed(2)}$ kam to'landi`,
+        );
       } else if (payment.status === PaymentStatus.OVERPAID) {
-        logger.debug(`✅ OVERPAID: ${payment.excessAmount.toFixed(2)}$ ortiqcha to'landi`);
+        logger.debug(
+          `✅ OVERPAID: ${payment.excessAmount.toFixed(2)}$ ortiqcha to'landi`,
+        );
       }
 
       // Payment'ni tasdiqlash
@@ -97,7 +107,7 @@ export class PaymentConfirmationService extends PaymentBaseService {
       }
 
       const paymentExists = (contract.payments as any[]).some(
-        (p) => p.toString() === payment._id.toString()
+        (p) => p.toString() === payment._id.toString(),
       );
 
       if (!paymentExists) {
@@ -114,22 +124,32 @@ export class PaymentConfirmationService extends PaymentBaseService {
       if (payment.excessAmount && isAmountPositive(payment.excessAmount)) {
         const originalActualAmount = payment.actualAmount || payment.amount;
         const correctedActualAmount = payment.expectedAmount || payment.amount;
+        const excessAmountValue = originalActualAmount - correctedActualAmount;
 
         payment.actualAmount = correctedActualAmount;
         payment.excessAmount = 0;
         payment.status = PaymentStatus.PAID;
         await payment.save();
 
-        logger.debug(`✅ Current payment actualAmount corrected: ${originalActualAmount} → ${payment.actualAmount}`);
-        logger.debug(`✅ Excess amount (${(originalActualAmount - correctedActualAmount).toFixed(2)} $) will be distributed to next months`);
-
-        const result = await this.processExcessPayment(
-          originalActualAmount - correctedActualAmount,
-          contract,
-          payment,
-          user
+        logger.debug(
+          `✅ Current payment actualAmount corrected: ${originalActualAmount} → ${payment.actualAmount}`,
         );
-        createdPayments.push(...result);
+        logger.debug(
+          `✅ Excess amount (${excessAmountValue.toFixed(2)} $) will be added to prepaid balance`,
+        );
+
+        // ✅ YANGI: Ortiqcha summani zapasga qo'shish (avtomatik to'lov yaratilmaydi)
+        await this.addToPrepaidBalance(excessAmountValue, contract);
+
+        // ✅ YANGI: Ortiqcha summani PrepaidRecord'ga yozish (Zapas Tarixi)
+        await this.recordPrepaidTransaction(
+          excessAmountValue,
+          payment,
+          contract,
+          payment.paymentMethod,
+          payment.notes ? payment.notes.text : undefined,
+        );
+        // createdPayments.push(...result); // ❌ COMMENTED: Endi avtomatik to'lovlar yaratilmaydi
       }
 
       await contract.save();
@@ -143,9 +163,10 @@ export class PaymentConfirmationService extends PaymentBaseService {
         }).sort({ targetMonth: 1 });
 
         // Eng oxirgi to'langan oyni topish
-        const paidPayments = allPayments.filter(p => p.isPaid);
-        const lastPaidMonth = paidPayments.length > 0
-          ? Math.max(...paidPayments.map(p => p.targetMonth || 0))
+        const paidPayments = allPayments.filter((p) => p.isPaid);
+        const lastPaidMonth =
+          paidPayments.length > 0 ?
+            Math.max(...paidPayments.map((p) => p.targetMonth || 0))
           : 0;
 
         logger.debug("📊 To'lov holati:", {
@@ -165,7 +186,8 @@ export class PaymentConfirmationService extends PaymentBaseService {
         } else {
           // nextPaymentDate ni hisoblash
           const startDate = new Date(contract.startDate);
-          const originalDay = contract.originalPaymentDay || startDate.getDate();
+          const originalDay =
+            contract.originalPaymentDay || startDate.getDate();
 
           // Keyingi to'lov sanasini hisoblash
           const newNextPaymentDate = new Date(startDate);
@@ -178,7 +200,9 @@ export class PaymentConfirmationService extends PaymentBaseService {
           logger.debug("📅 nextPaymentDate yangilandi:", {
             lastPaidMonth: lastPaidMonth,
             nextPaymentMonth: nextPaymentMonth,
-            oldNextPaymentDate: contract.nextPaymentDate?.toISOString().split("T")[0],
+            oldNextPaymentDate: contract.nextPaymentDate
+              ?.toISOString()
+              .split("T")[0],
             newNextPaymentDate: newNextPaymentDate.toISOString().split("T")[0],
             originalDay: originalDay,
           });
@@ -213,7 +237,9 @@ export class PaymentConfirmationService extends PaymentBaseService {
         });
 
         if (deletedReminders.deletedCount > 0) {
-          logger.debug(`🗑️ ${deletedReminders.deletedCount} eslatma notification o'chirildi (${payment.targetMonth}-oy va oldingi oylar uchun)`);
+          logger.debug(
+            `🗑️ ${deletedReminders.deletedCount} eslatma notification o'chirildi (${payment.targetMonth}-oy va oldingi oylar uchun)`,
+          );
         }
       }
 
@@ -222,22 +248,29 @@ export class PaymentConfirmationService extends PaymentBaseService {
       const customerName = customer?.fullName || "Noma'lum mijoz";
 
       // ✅ YANGI: Pulni yig'ib to'lovni qilgan odamni olish (managerId)
-      await payment.populate('managerId');
+      await payment.populate("managerId");
       const paymentCreator = payment.managerId as any;
-      const paymentCreatorName = paymentCreator
-        ? `${paymentCreator.firstName || ''} ${paymentCreator.lastName || ''}`.trim()
+      const paymentCreatorName =
+        paymentCreator ?
+          `${paymentCreator.firstName || ""} ${paymentCreator.lastName || ""}`.trim()
         : "Noma'lum";
 
       await this.createAuditLog({
-        action: (await import("../../../schemas/audit-log.schema")).AuditAction.CONFIRM,
-        entity: (await import("../../../schemas/audit-log.schema")).AuditEntity.PAYMENT,
+        action: (await import("../../../schemas/audit-log.schema")).AuditAction
+          .CONFIRM,
+        entity: (await import("../../../schemas/audit-log.schema")).AuditEntity
+          .PAYMENT,
         entityId: paymentId,
         userId: user.sub,
         changes: [
           { field: "status", oldValue: "PENDING", newValue: payment.status },
           { field: "isPaid", oldValue: false, newValue: payment.isPaid },
           { field: "confirmedBy", oldValue: null, newValue: user.sub },
-          { field: "confirmedAt", oldValue: null, newValue: payment.confirmedAt }
+          {
+            field: "confirmedAt",
+            oldValue: null,
+            newValue: payment.confirmedAt,
+          },
         ],
         metadata: {
           customerName, // ✅ Mijoz ismi
@@ -249,17 +282,24 @@ export class PaymentConfirmationService extends PaymentBaseService {
           targetMonth: payment.targetMonth,
           paymentCreatorId: paymentCreator?._id?.toString(), // ✅ YANGI: To'lov qilgan odam ID
           paymentCreatorName, // ✅ YANGI: To'lov qilgan odam ismi
-        }
+        },
       });
 
       // Balance yangilash
       const confirmedActualAmount = payment.actualAmount || payment.amount;
-      await this.updateBalance(payment.managerId.toString(), {
-        dollar: confirmedActualAmount,
-        sum: 0,
-      }, session);
+      await this.updateBalance(
+        payment.managerId.toString(),
+        {
+          dollar: confirmedActualAmount,
+          sum: 0,
+        },
+        session,
+      );
 
-      logger.debug("💵 Balance updated with actualAmount:", confirmedActualAmount);
+      logger.debug(
+        "💵 Balance updated with actualAmount:",
+        confirmedActualAmount,
+      );
 
       // ✅ YANGI LOGIKA: Debtor faqat barcha muddati o'tgan to'lovlar to'langanda o'chirilsin
       // Barcha to'lovlarni olish
@@ -272,7 +312,7 @@ export class PaymentConfirmationService extends PaymentBaseService {
 
       // Muddati o'tgan va to'lanmagan to'lovlarni hisoblash
       const overdueUnpaidPayments = allPayments.filter(
-        (p) => !p.isPaid && new Date(p.date) < today
+        (p) => !p.isPaid && new Date(p.date) < today,
       );
 
       logger.debug("📊 Overdue unpaid payments check:", {
@@ -288,20 +328,26 @@ export class PaymentConfirmationService extends PaymentBaseService {
         });
 
         if (deletedDebtors.deletedCount > 0) {
-          logger.debug("✅ Debtor(s) deleted - no more overdue payments:", deletedDebtors.deletedCount);
+          logger.debug(
+            "✅ Debtor(s) deleted - no more overdue payments:",
+            deletedDebtors.deletedCount,
+          );
         }
       } else {
-        logger.debug(`⚠️ Debtor NOT deleted - still has ${overdueUnpaidPayments.length} overdue unpaid payment(s)`);
+        logger.debug(
+          `⚠️ Debtor NOT deleted - still has ${overdueUnpaidPayments.length} overdue unpaid payment(s)`,
+        );
 
         // ✅ BONUS: Debtor ma'lumotlarini yangilash (overdueDays, debtAmount)
         // Eng birinchi muddati o'tgan to'lovni topish
         const firstOverduePayment = overdueUnpaidPayments.sort(
-          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
         )[0];
 
         if (firstOverduePayment) {
           const overdueDays = Math.floor(
-            (today.getTime() - new Date(firstOverduePayment.date).getTime()) / (1000 * 60 * 60 * 24)
+            (today.getTime() - new Date(firstOverduePayment.date).getTime()) /
+              (1000 * 60 * 60 * 24),
           );
 
           // Debtor'ni yangilash
@@ -311,15 +357,18 @@ export class PaymentConfirmationService extends PaymentBaseService {
               $set: {
                 dueDate: firstOverduePayment.date,
                 overdueDays: Math.max(0, overdueDays),
-                debtAmount: firstOverduePayment.remainingAmount || firstOverduePayment.amount,
+                debtAmount:
+                  firstOverduePayment.remainingAmount ||
+                  firstOverduePayment.amount,
               },
-            }
+            },
           );
 
           logger.debug("✅ Debtor updated with new overdue info:", {
             dueDate: firstOverduePayment.date,
             overdueDays: Math.max(0, overdueDays),
-            debtAmount: firstOverduePayment.remainingAmount || firstOverduePayment.amount,
+            debtAmount:
+              firstOverduePayment.remainingAmount || firstOverduePayment.amount,
           });
         }
       }
@@ -334,7 +383,9 @@ export class PaymentConfirmationService extends PaymentBaseService {
         const customer = await Customer.findById(payment.customerId);
 
         if (customer) {
-          const botNotificationService = (await import("../../../bot/services/notification.service")).default;
+          const botNotificationService = (
+            await import("../../../bot/services/notification.service")
+          ).default;
 
           await botNotificationService.createPaymentNotification({
             managerId: payment.managerId.toString(),
@@ -346,7 +397,10 @@ export class PaymentConfirmationService extends PaymentBaseService {
             productName: contract.productName || "Mahsulot",
             amount: payment.actualAmount || payment.amount,
             status: payment.status,
-            paymentType: payment.status === 'PAID' ? 'FULL' : (payment.status === 'OVERPAID' ? 'EXCESS' : 'PARTIAL'),
+            paymentType:
+              payment.status === "PAID" ? "FULL"
+              : payment.status === "OVERPAID" ? "EXCESS"
+              : "PARTIAL",
             monthNumber: payment.targetMonth,
             currencyDetails: { dollar: payment.amount, sum: 0 },
           });
@@ -404,7 +458,7 @@ export class PaymentConfirmationService extends PaymentBaseService {
 
       if (contract) {
         const paymentIndex = (contract.payments as any[]).findIndex(
-          (p) => p.toString() === payment._id.toString()
+          (p) => p.toString() === payment._id.toString(),
         );
 
         if (paymentIndex !== -1) {
@@ -421,20 +475,27 @@ export class PaymentConfirmationService extends PaymentBaseService {
       const customer = await Customer.findById(payment.customerId);
       const customerName = customer?.fullName || "Noma'lum mijoz";
 
-      await payment.populate('managerId');
+      await payment.populate("managerId");
       const paymentCreator = payment.managerId as any;
-      const paymentCreatorName = paymentCreator
-        ? `${paymentCreator.firstName || ''} ${paymentCreator.lastName || ''}`.trim()
+      const paymentCreatorName =
+        paymentCreator ?
+          `${paymentCreator.firstName || ""} ${paymentCreator.lastName || ""}`.trim()
         : "Noma'lum";
 
       await this.createAuditLog({
-        action: (await import("../../../schemas/audit-log.schema")).AuditAction.REJECT,
-        entity: (await import("../../../schemas/audit-log.schema")).AuditEntity.PAYMENT,
+        action: (await import("../../../schemas/audit-log.schema")).AuditAction
+          .REJECT,
+        entity: (await import("../../../schemas/audit-log.schema")).AuditEntity
+          .PAYMENT,
         entityId: paymentId,
         userId: user.sub,
         changes: [
-          { field: "status", oldValue: "PENDING", newValue: PaymentStatus.REJECTED },
-          { field: "reason", oldValue: null, newValue: reason }
+          {
+            field: "status",
+            oldValue: "PENDING",
+            newValue: PaymentStatus.REJECTED,
+          },
+          { field: "reason", oldValue: null, newValue: reason },
         ],
         metadata: {
           customerName, // ✅ Mijoz ismi
@@ -452,7 +513,9 @@ export class PaymentConfirmationService extends PaymentBaseService {
       // Database notification yaratish
       try {
         if (customer && contract) {
-          const botNotificationService = (await import("../../../bot/services/notification.service")).default;
+          const botNotificationService = (
+            await import("../../../bot/services/notification.service")
+          ).default;
 
           await botNotificationService.createPaymentNotification({
             managerId: payment.managerId.toString(),
@@ -464,7 +527,7 @@ export class PaymentConfirmationService extends PaymentBaseService {
             productName: contract.productName || "Mahsulot",
             amount: payment.actualAmount || payment.amount,
             status: payment.status,
-            paymentType: 'PARTIAL',
+            paymentType: "PARTIAL",
             monthNumber: payment.targetMonth,
             currencyDetails: undefined,
           });
@@ -504,7 +567,9 @@ export class PaymentConfirmationService extends PaymentBaseService {
         createdAt: { $lt: timeoutDate },
       }).populate("notes");
 
-      logger.debug(`📊 Found ${expiredPayments.length} expired PENDING payment(s)`);
+      logger.debug(
+        `📊 Found ${expiredPayments.length} expired PENDING payment(s)`,
+      );
 
       const rejectedPaymentIds: string[] = [];
 
@@ -528,7 +593,9 @@ export class PaymentConfirmationService extends PaymentBaseService {
         }
       }
 
-      logger.debug(`✅ ${rejectedPaymentIds.length} payment(s) automatically rejected`);
+      logger.debug(
+        `✅ ${rejectedPaymentIds.length} payment(s) automatically rejected`,
+      );
 
       return {
         rejectedCount: rejectedPaymentIds.length,

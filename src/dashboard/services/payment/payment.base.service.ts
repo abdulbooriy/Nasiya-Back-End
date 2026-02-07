@@ -1,17 +1,15 @@
 /**
  * Payment Base Service
- * 
+ *
  * Barcha payment service'lar uchun base class
  * Umumiy metodlar va helper'lar
  */
 
 import { Balance } from "../../../schemas/balance.schema";
 import Contract, { ContractStatus } from "../../../schemas/contract.schema";
-import Payment, { PaymentStatus, PaymentType } from "../../../schemas/payment.schema";
-import Notes from "../../../schemas/notes.schema";
+import { PaymentMethod } from "../../../schemas/payment.schema";
+import PrepaidRecord from "../../../schemas/prepaid-record.schema";
 import logger from "../../../utils/logger";
-import IJwtUser from "../../../types/user";
-import BaseError from "../../../utils/base.error";
 import contractQueryService from "../contract/contract.query.service";
 import { PAYMENT_CONSTANTS } from "../../../utils/helpers/payment";
 
@@ -26,19 +24,23 @@ export class PaymentBaseService {
       dollar?: number;
       sum?: number;
     },
-    session?: any
+    session?: any,
   ): Promise<any> {
     try {
-      let balance = await Balance.findOne({ managerId }).session(session || null);
+      let balance = await Balance.findOne({ managerId }).session(
+        session || null,
+      );
 
       if (!balance) {
         const newBalances = await Balance.create(
-          [{
-            managerId,
-            dollar: changes.dollar || 0,
-            sum: changes.sum || 0,
-          }],
-          { session: session || undefined }
+          [
+            {
+              managerId,
+              dollar: changes.dollar || 0,
+              sum: changes.sum || 0,
+            },
+          ],
+          { session: session || undefined },
         );
         balance = newBalances[0];
         logger.debug("✅ New balance created:", balance._id);
@@ -59,118 +61,140 @@ export class PaymentBaseService {
   }
 
   /**
-   * Ortiqcha to'lovni boshqarish
-   * Keyingi oylar uchun avtomatik to'lovlar yaratish
-   * 
-   * Requirements: 8.5
+   * ✅ YANGI: Oddiy zapas funksiyasi
+   * Ortiqcha to'lovni shunchaki prepaidBalance ga qo'shish
    */
-  protected async processExcessPayment(
+  protected async addToPrepaidBalance(
     excessAmount: number,
     contract: any,
-    payment: any,
-    user: IJwtUser
-  ): Promise<any[]> {
-    const createdPayments: any[] = [];
-    
+  ): Promise<void> {
     if (excessAmount <= PAYMENT_CONSTANTS.TOLERANCE) {
-      return createdPayments;
+      return;
     }
 
-    logger.debug(`💰 Processing excess amount: ${excessAmount.toFixed(2)} $`);
+    // Ortiqcha summani prepaidBalance ga qo'shish
+    contract.prepaidBalance = (contract.prepaidBalance || 0) + excessAmount;
 
-    let remainingExcess = excessAmount;
-    const monthlyPayment = contract.monthlyPayment;
+    logger.debug(`💰 Zapas qo'shildi: ${excessAmount.toFixed(2)} $`);
+    logger.debug(`💎 Jami zapas: ${contract.prepaidBalance.toFixed(2)} $`);
+  }
 
-    // Barcha to'lovlarni olish
-    const allPayments = await Payment.find({
-      _id: { $in: contract.payments },
-    }).sort({ date: 1 });
-
-    // To'langan oylik to'lovlar sonini hisoblash
-    const paidMonthlyPayments = allPayments.filter(
-      (p) => p.paymentType === PaymentType.MONTHLY && p.isPaid
-    );
-    let currentMonthIndex = paidMonthlyPayments.length;
-
-    logger.debug(`📊 Current state:`, {
-      totalPayments: allPayments.length,
-      paidMonthlyPayments: paidMonthlyPayments.length,
-      nextMonthIndex: currentMonthIndex + 1,
-      contractPeriod: contract.period,
-    });
-
-    // Ortiqcha summani keyingi oylarga taqsimlash
-    while (remainingExcess > PAYMENT_CONSTANTS.TOLERANCE && currentMonthIndex < contract.period) {
-      const monthNumber = currentMonthIndex + 1;
-
-      // Bu oy uchun to'lov summasi
-      const paymentAmount = Math.min(remainingExcess, monthlyPayment);
-      const shortageAmount =
-        paymentAmount < monthlyPayment ? monthlyPayment - paymentAmount : 0;
-
-      // Status aniqlash
-      let paymentStatus: PaymentStatus;
-      if (paymentAmount >= monthlyPayment - PAYMENT_CONSTANTS.TOLERANCE) {
-        paymentStatus = PaymentStatus.PAID;
-      } else {
-        paymentStatus = PaymentStatus.UNDERPAID;
+  /**
+   * ✅ YANGI: Ortiqcha to'lovni PrepaidRecord'ga yozish
+   * To'lov tasdiqlanganda avtomatik chaqiriladi
+   */
+  protected async recordPrepaidTransaction(
+    amount: number,
+    payment: any,
+    contract: any,
+    paymentMethod?: PaymentMethod,
+    notes?: string,
+  ): Promise<void> {
+    try {
+      if (amount <= PAYMENT_CONSTANTS.TOLERANCE) {
+        logger.debug(
+          "ℹ️ Ortiqcha summa juda kichik - PrepaidRecord qo'shilmadi",
+        );
+        return;
       }
 
-      // Notes yaratish
-      const notes = await Notes.create({
-        text: `${monthNumber}-oy to'lovi (ortiqcha summadan): ${paymentAmount.toFixed(2)} $${
-          shortageAmount > 0 ? `\n⚠️ ${shortageAmount.toFixed(2)} $ kam to'landi` : ""
-        }`,
+      // Mijoz ismi
+      const customer = await (
+        await import("../../../schemas/customer.schema")
+      ).default.findById(payment.customerId);
+      const customerName = customer?.fullName || "Noma'lum";
+
+      // To'lovni qilgan shaxs (manager)
+      const manager = await (
+        await import("../../../schemas/employee.schema")
+      ).default.findById(payment.managerId);
+      const managerName =
+        manager ?
+          `${manager.firstName || ""} ${manager.lastName || ""}`.trim()
+        : "Noma'lum";
+
+      // ✅ YANGI: Format method'ini qo'llash
+      const formattedNote = this.formatPrepaidNote({
+        date: payment.date,
+        amount,
+        paymentMethod,
+        managerName,
+        contractCustomId: contract.customId || "N/A",
+        additionalNotes: notes,
+      });
+
+      // PrepaidRecord yaratish
+      const prepaidRecord = await PrepaidRecord.create({
+        amount,
+        date: new Date(payment.date),
+        paymentMethod: paymentMethod,
+        createdBy: payment.managerId,
         customer: payment.customerId,
-        createBy: String(payment.managerId),
+        contract: contract._id,
+        contractId: contract.customId,
+        notes: formattedNote,
+        relatedPaymentId: payment._id.toString(),
       });
 
-      // Payment yaratish
-      const newPayment = await Payment.create({
-        amount: monthlyPayment,
-        actualAmount: paymentAmount,
-        date: new Date(),
-        isPaid: true,
-        paymentType: PaymentType.MONTHLY,
+      logger.debug("✅ PrepaidRecord yaratildi:", {
+        id: prepaidRecord._id,
+        amount: amount.toFixed(2),
         customerId: payment.customerId,
-        managerId: payment.managerId,
-        notes: notes._id,
-        status: paymentStatus,
-        expectedAmount: monthlyPayment,
-        remainingAmount: shortageAmount,
-        excessAmount: 0,
-        confirmedAt: new Date(),
-        confirmedBy: user.sub,
-        targetMonth: monthNumber,
+        contractId: contract.customId,
+        paymentMethod: paymentMethod,
       });
-
-      createdPayments.push(newPayment);
-
-      // Contract.payments ga qo'shish
-      (contract.payments as string[]).push(newPayment._id.toString());
-
-      logger.debug(`✅ Additional payment created for month ${monthNumber}:`, {
-        id: newPayment._id,
-        status: paymentStatus,
-        amount: paymentAmount,
-        expected: monthlyPayment,
-        shortage: shortageAmount,
-      });
-
-      remainingExcess -= paymentAmount;
-      currentMonthIndex++;
+    } catch (error) {
+      logger.error("❌ Error creating PrepaidRecord:", error);
     }
+  }
 
-    // Agar hali ham ortiqcha summa qolsa, prepaidBalance ga qo'shish
-    if (remainingExcess > PAYMENT_CONSTANTS.TOLERANCE) {
-      contract.prepaidBalance = (contract.prepaidBalance || 0) + remainingExcess;
-      logger.debug(`💰 Prepaid balance updated: ${contract.prepaidBalance.toFixed(2)} $`);
-      logger.debug(`ℹ️ Remaining ${remainingExcess.toFixed(2)} $ added to prepaid balance (all months paid)`);
-    }
+  /**
+   * To'lov usulini aniq formatda chiqarish
+   */
+  private formatPaymentMethod(method?: PaymentMethod): string {
+    const methods: { [key: string]: string } = {
+      som_cash: "So'm naqd",
+      som_card: "So'm karta",
+      dollar_cash: "Dollar naqd",
+      dollar_card_visa: "Dollar karta (Visa)",
+    };
+    return methods[method || ""] || "Noma'lum";
+  }
 
-    logger.debug(`✅ Created ${createdPayments.length} additional payment(s) from excess`);
+  protected formatPrepaidNote(params: {
+    date: Date;
+    amount: number;
+    paymentMethod?: PaymentMethod;
+    managerName: string;
+    contractCustomId: string;
+    additionalNotes?: string;
+  }): string {
+    const {
+      date,
+      amount,
+      paymentMethod,
+      managerName,
+      contractCustomId,
+      additionalNotes,
+    } = params;
 
-    return createdPayments;
+    const dateStr = new Date(date).toLocaleDateString("uz-UZ", {
+      day: "2-digit",
+      year: "numeric",
+      month: "2-digit",
+    });
+    const timeStr = new Date(date).toLocaleTimeString("uz-UZ", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    const amountStr = `$${amount.toFixed(2)}`;
+    const methodStr = `To'lash usuli: ${this.formatPaymentMethod(paymentMethod)}`;
+    const managerStr = `${managerName}`;
+
+    // Agar boshqa format qilmoqchi bo'lsangiz, quyidagi qatorni o'zgartiring:
+    const formatString = `${dateStr} - ${timeStr} | ${amountStr} | ${methodStr} | ${managerStr}${additionalNotes ? ` | ${additionalNotes}` : ""}`;
+
+    return formatString;
   }
 
   /**
@@ -179,14 +203,21 @@ export class PaymentBaseService {
    */
   protected async checkContractCompletion(contractId: string): Promise<void> {
     try {
-      const contractWithTotals = await contractQueryService.getContractById(contractId);
+      const contractWithTotals =
+        await contractQueryService.getContractById(contractId);
 
       if (!contractWithTotals) {
-        logger.error(`❌ Contract not found during completion check: ${contractId}`);
+        logger.error(
+          `❌ Contract not found during completion check: ${contractId}`,
+        );
         return;
       }
-      
-      const { remainingDebt, status: currentStatus, prepaidBalance } = contractWithTotals;
+
+      const {
+        remainingDebt,
+        status: currentStatus,
+        prepaidBalance,
+      } = contractWithTotals;
       const finalRemainingDebt = remainingDebt - (prepaidBalance || 0);
 
       logger.debug("📊 Contract completion check (using QueryService):", {
@@ -220,7 +251,7 @@ export class PaymentBaseService {
           logger.debug(
             "⚠️ Contract status changed back to ACTIVE:",
             contractId,
-            `(${finalRemainingDebt.toFixed(2)} $ qoldi)`
+            `(${finalRemainingDebt.toFixed(2)} $ qoldi)`,
           );
         }
       }
@@ -242,8 +273,10 @@ export class PaymentBaseService {
     metadata?: any;
   }): Promise<void> {
     try {
-      const auditLogService = (await import("../../../services/audit-log.service")).default;
-      
+      const auditLogService = (
+        await import("../../../services/audit-log.service")
+      ).default;
+
       await auditLogService.createLog({
         action: params.action,
         entity: params.entity,
@@ -252,7 +285,7 @@ export class PaymentBaseService {
         changes: params.changes,
         metadata: params.metadata,
       });
-      
+
       logger.debug("✅ Audit log created");
     } catch (auditError) {
       logger.error("❌ Error creating audit log:", auditError);

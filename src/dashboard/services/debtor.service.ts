@@ -5,6 +5,12 @@ import { Debtor } from "../../schemas/debtor.schema";
 import Payment, { PaymentType } from "../../schemas/payment.schema";
 import logger from "../../utils/logger";
 
+interface CategorizedDebts {
+  overdue: any[];
+  pending: any[];
+  normal: any[];
+}
+
 class DebtorService {
   /**
    * Qarzdorlarni ko'rish (Mijozlar bo'yicha guruhlangan)
@@ -102,7 +108,7 @@ class DebtorService {
                   cond: {
                     $and: [
                       { $eq: ["$$p.isPaid", true] },
-                      { $eq: ["$$p.paymentType", "monthly"] }
+                      { $eq: ["$$p.paymentType", "monthly"] },
                     ],
                   },
                 },
@@ -237,11 +243,16 @@ class DebtorService {
               $dateFromParts: {
                 year: { $year: filterDate },
                 month: { $month: filterDate },
-                day: { $ifNull: ["$originalPaymentDay", { $dayOfMonth: "$startDate" }] },
-                timezone: "Asia/Tashkent"
-              }
-            }
-          }
+                day: {
+                  $ifNull: [
+                    "$originalPaymentDay",
+                    { $dayOfMonth: "$startDate" },
+                  ],
+                },
+                timezone: "Asia/Tashkent",
+              },
+            },
+          },
         },
         // 4. Check isPaidForTargetMonth
         {
@@ -255,13 +266,13 @@ class DebtorService {
                     $and: [
                       { $eq: ["$$p.isPaid", true] },
                       { $eq: [{ $year: "$$p.date" }, { $year: filterDate }] },
-                      { $eq: [{ $month: "$$p.date" }, { $month: filterDate }] }
-                    ]
-                  }
-                }
-              }
-            }
-          }
+                      { $eq: [{ $month: "$$p.date" }, { $month: filterDate }] },
+                    ],
+                  },
+                },
+              },
+            },
+          },
         },
         // 5. New $match stage for month filtering
         {
@@ -272,13 +283,13 @@ class DebtorService {
                 {
                   $and: [
                     { $lte: ["$virtualDueDate", filterDate] },
-                    { $eq: ["$isPaidForTargetMonth", false] }
-                  ]
+                    { $eq: ["$isPaidForTargetMonth", false] },
+                  ],
                 },
-                { $lte: ["$nextPaymentDate", filterDate] }
-              ]
-            }
-          }
+                { $lte: ["$nextPaymentDate", filterDate] },
+              ],
+            },
+          },
         },
         // 6. Calculate delayDays and other fields
         {
@@ -295,8 +306,8 @@ class DebtorService {
                         endDate: filterDate,
                         unit: "day",
                       },
-                    }
-                  ]
+                    },
+                  ],
                 },
                 {
                   $max: [
@@ -307,10 +318,10 @@ class DebtorService {
                         endDate: today,
                         unit: "day",
                       },
-                    }
-                  ]
-                }
-              ]
+                    },
+                  ],
+                },
+              ],
             },
             totalPaid: {
               $sum: {
@@ -335,24 +346,24 @@ class DebtorService {
                   cond: {
                     $and: [
                       { $eq: ["$$p.isPaid", true] },
-                      { $eq: ["$$p.paymentType", "monthly"] }
+                      { $eq: ["$$p.paymentType", "monthly"] },
                     ],
                   },
                 },
               },
             },
-          }
+          },
         },
         // 7. Rest of pipeline
         {
           $addFields: {
-            remainingDebt: { $subtract: ["$totalPrice", "$totalPaid"] }
-          }
+            remainingDebt: { $subtract: ["$totalPrice", "$totalPaid"] },
+          },
         },
         {
           $match: {
-            remainingDebt: { $gt: 0 }
-          }
+            remainingDebt: { $gt: 0 },
+          },
         },
         {
           $project: {
@@ -361,7 +372,13 @@ class DebtorService {
             customerId: "$customer._id",
             fullName: "$customer.fullName",
             phoneNumber: "$customer.phoneNumber",
-            manager: { $concat: [{ $ifNull: ["$manager.firstName", ""] }, " ", { $ifNull: ["$manager.lastName", ""] }] },
+            manager: {
+              $concat: [
+                { $ifNull: ["$manager.firstName", ""] },
+                " ",
+                { $ifNull: ["$manager.lastName", ""] },
+              ],
+            },
             totalPrice: 1,
             totalPaid: 1,
             remainingDebt: 1,
@@ -373,14 +390,16 @@ class DebtorService {
             monthlyPayment: 1,
             period: 1,
             paidMonthsCount: 1,
-            createdAt: 1
+            createdAt: 1,
           },
         },
-        { $sort: { delayDays: -1 } }
+        { $sort: { delayDays: -1 } },
       ]);
     } catch (error) {
       logger.error("Error fetching contracts by payment date:", error);
-      throw BaseError.InternalServerError("Shartnomalarni olishda xatolik yuz berdi");
+      throw BaseError.InternalServerError(
+        "Shartnomalarni olishda xatolik yuz berdi",
+      );
     }
   }
 
@@ -394,10 +413,15 @@ class DebtorService {
       for (const contract of contracts) {
         contract.isDeclare = true;
         await contract.save();
-        const existingDebtor = await Debtor.findOne({ contractId: contract._id });
+        const existingDebtor = await Debtor.findOne({
+          contractId: contract._id,
+        });
         if (!existingDebtor) {
           const today = new Date();
-          const overdueDays = Math.floor((today.getTime() - contract.nextPaymentDate.getTime()) / (1000 * 60 * 60 * 24));
+          const overdueDays = Math.floor(
+            (today.getTime() - contract.nextPaymentDate.getTime()) /
+              (1000 * 60 * 60 * 24),
+          );
           await Debtor.create({
             contractId: contract._id,
             debtAmount: contract.monthlyPayment,
@@ -423,53 +447,56 @@ class DebtorService {
     try {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      
+
       logger.info("🔍 === CREATING OVERDUE DEBTORS ===");
       logger.info(`Today: ${today.toISOString()}`);
-      
+
       // ✅ Contract-based: Barcha active shartnomalarni olish
       const contracts = await Contract.find({
         isActive: true,
         isDeleted: false,
         isDeclare: false,
         status: ContractStatus.ACTIVE,
-      }).populate('payments');
-      
+      }).populate("payments");
+
       logger.info(`📊 Checking ${contracts.length} active contract(s)`);
-      
+
       let createdCount = 0;
       let skippedCount = 0;
       let overduePaymentsCount = 0;
-      
+
       for (const contract of contracts) {
         const payments = contract.payments as any[];
-        
+
         // ✅ Har bir contract uchun kechikkan to'lovlarni topish
-        const overduePayments = payments.filter(p => 
-          !p.isPaid && 
-          p.paymentType === PaymentType.MONTHLY && 
-          new Date(p.date) < today
+        const overduePayments = payments.filter(
+          (p) =>
+            !p.isPaid &&
+            p.paymentType === PaymentType.MONTHLY &&
+            new Date(p.date) < today,
         );
-        
+
         if (overduePayments.length === 0) {
           continue;
         }
-        
+
         overduePaymentsCount += overduePayments.length;
-        
+
         // ✅ Har bir kechikkan to'lov uchun alohida debtor yaratish
         for (const payment of overduePayments) {
           const paymentDate = new Date(payment.date);
-          
+
           // Debtor allaqachon mavjudmi? (dueDate bo'yicha)
-          const existingDebtor = await Debtor.findOne({ 
+          const existingDebtor = await Debtor.findOne({
             contractId: contract._id,
-            dueDate: paymentDate
+            dueDate: paymentDate,
           });
-          
+
           if (!existingDebtor) {
-            const overdueDays = Math.floor((today.getTime() - paymentDate.getTime()) / (1000 * 60 * 60 * 24));
-            
+            const overdueDays = Math.floor(
+              (today.getTime() - paymentDate.getTime()) / (1000 * 60 * 60 * 24),
+            );
+
             await Debtor.create({
               contractId: contract._id,
               debtAmount: payment.amount,
@@ -477,30 +504,152 @@ class DebtorService {
               overdueDays: Math.max(0, overdueDays),
               createBy: contract.createBy,
             });
-            
+
             createdCount++;
-            logger.debug(`✅ Debtor created: Contract ${contract._id}, Due: ${paymentDate.toISOString().split('T')[0]}, Overdue: ${overdueDays} days`);
+            logger.debug(
+              `✅ Debtor created: Contract ${contract._id}, Due: ${paymentDate.toISOString().split("T")[0]}, Overdue: ${overdueDays} days`,
+            );
           } else {
             // ✅ Mavjud debtor'ni yangilash (overdueDays)
-            const overdueDays = Math.floor((today.getTime() - paymentDate.getTime()) / (1000 * 60 * 60 * 24));
+            const overdueDays = Math.floor(
+              (today.getTime() - paymentDate.getTime()) / (1000 * 60 * 60 * 24),
+            );
             existingDebtor.overdueDays = Math.max(0, overdueDays);
             await existingDebtor.save();
             skippedCount++;
           }
         }
       }
-      
-      logger.info(`✅ Debtor creation completed: Found ${overduePaymentsCount} overdue payment(s), Created ${createdCount}, Updated ${skippedCount}`);
-      
-      return { 
+
+      logger.info(
+        `✅ Debtor creation completed: Found ${overduePaymentsCount} overdue payment(s), Created ${createdCount}, Updated ${skippedCount}`,
+      );
+
+      return {
         created: createdCount,
         updated: skippedCount,
-        totalOverduePayments: overduePaymentsCount
+        totalOverduePayments: overduePaymentsCount,
       };
     } catch (error) {
       logger.error("❌ Error creating overdue debtors:", error);
       throw BaseError.InternalServerError("Qarzdorlar yaratishda xatolik");
     }
+  }
+
+  private categorizeDebtors(debts: any[]): CategorizedDebts {
+    const result: CategorizedDebts = {
+      overdue: [],
+      pending: [],
+      normal: [],
+    };
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    for (const contract of debts) {
+      const payments = (contract.payments || []) as any[];
+
+      for (const p of payments) {
+        // Normalize some fields that might be populated or just ids
+        const paymentDate = p.date ? new Date(p.date) : null;
+        const isPaid = !!p.isPaid;
+        const status = p.status || null; // e.g. "PENDING"
+
+        // Build unified debt object for UI
+        const debtObj = {
+          contractId: contract._id,
+          contractCustomId: contract.customId || contract._id,
+          productName: contract.productName,
+          customerId: contract.customer || contract.customerId,
+          paymentId: p._id,
+          amount: p.amount || p.expectedAmount || 0,
+          dueDate: paymentDate,
+          overdueDays:
+            paymentDate && paymentDate < today ?
+              Math.floor(
+                (today.getTime() - paymentDate.getTime()) /
+                  (1000 * 60 * 60 * 24),
+              )
+            : 0,
+          isPaid,
+          status,
+          rawPayment: p,
+        };
+
+        // Categorize
+        if (!isPaid && debtObj.overdueDays > 0) {
+          result.overdue.push(debtObj);
+        } else if (!isPaid && status === "PENDING") {
+          // Payment awaiting confirmation in cash desk
+          result.pending.push(debtObj);
+        } else if (!isPaid) {
+          // Not paid, but not overdue/pending -> upcoming or normal
+          result.normal.push(debtObj);
+        }
+        // if isPaid -> ignore (not a debtor item)
+      }
+    }
+
+    // Sort each category
+    this.sortDebts(result);
+
+    return result;
+  }
+
+  async getFilteredDebts(customerId: string, filter: string = "all") {
+    try {
+      // Load active contracts for the customer with payment details
+      const contracts = await Contract.find({
+        customer: customerId,
+        isActive: true,
+        isDeleted: false,
+        status: ContractStatus.ACTIVE,
+      })
+        .populate({ path: "payments", options: { sort: { date: -1 } } })
+        .lean();
+
+      // Categorize debts based on payments
+      const categorized = this.categorizeDebtors(contracts as any[]);
+
+      // Apply simple filter if requested
+      if (filter === "overdue")
+        return { success: true, data: categorized.overdue };
+      if (filter === "pending")
+        return { success: true, data: categorized.pending };
+      if (filter === "normal")
+        return { success: true, data: categorized.normal };
+
+      // Default: return all categories grouped
+      return { success: true, data: categorized };
+    } catch (error) {
+      logger.error("Error fetching debts:", error);
+      throw error;
+    }
+  }
+
+  private sortDebts(categorized: CategorizedDebts): void {
+    // Overdue: most overdue first (overdueDays desc), then amount desc
+    categorized.overdue.sort((a: any, b: any) => {
+      if (b.overdueDays !== a.overdueDays) return b.overdueDays - a.overdueDays;
+      return b.amount - a.amount;
+    });
+
+    // Pending: newest payments awaiting confirmation first (date desc)
+    categorized.pending.sort((a: any, b: any) => {
+      const da = a.dueDate ? new Date(a.dueDate).getTime() : 0;
+      const db = b.dueDate ? new Date(b.dueDate).getTime() : 0;
+      return db - da;
+    });
+
+    // Normal/upcoming: nearest due date first (dueDate asc), fall back to amount desc
+    categorized.normal.sort((a: any, b: any) => {
+      const da =
+        a.dueDate ? new Date(a.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+      const db =
+        b.dueDate ? new Date(b.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+      if (da !== db) return da - db;
+      return b.amount - a.amount;
+    });
   }
 }
 

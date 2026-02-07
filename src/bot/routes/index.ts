@@ -10,6 +10,7 @@ import expensesRoute from "./expenses.routes";
 import contractRoute from "./contract.routes";
 import notificationRoute from "./notification.routes";
 import prepaidRoute from "./prepaid.routes";
+import debtorRoute from "./debtor.routes";
 
 const routes = Router();
 
@@ -23,5 +24,6 @@ routes.use("/notes", botManager, notesRoute);
 routes.use("/expenses", botManager, expensesRoute);
 routes.use("/notifications", botManager, notificationRoute);
 routes.use("/prepaid", botManager, prepaidRoute);
+routes.use("/debts", botManager, debtorRoute);
 
 export default routes;

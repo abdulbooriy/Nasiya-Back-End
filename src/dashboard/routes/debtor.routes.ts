@@ -8,25 +8,25 @@ const router = Router();
 router.get(
   "/customers",
   checkPermission(Permission.VIEW_DEBTOR),
-  debtorController.getDebtors
+  debtorController.getDebtors,
 );
 
 router.get(
   "/contracts",
   checkPermission(Permission.VIEW_DEBTOR),
-  debtorController.getContract
+  debtorController.getContract,
 );
 
 router.post(
   "/announce",
   checkPermission(Permission.CREATE_DEBTOR),
-  debtorController.declareDebtors
+  debtorController.declareDebtors,
 );
 
 router.post(
   "/pay",
   checkPermission(Permission.UPDATE_DEBTOR),
-  debtorController.payDebt
+  debtorController.payDebt,
 );
 
 // router.post(
@@ -34,4 +34,11 @@ router.post(
 //   checkPermission(Permission.UPDATE_DEBTOR),
 //   debtorController.notifyDebtors
 // );
+
+router.get(
+  "/customer/:customerId",
+  checkPermission(Permission.VIEW_DEBTOR),
+  debtorController.getDebtsForCustomer,
+);
+
 export default router;

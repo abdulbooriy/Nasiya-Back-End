@@ -550,12 +550,10 @@ class DebtorService {
       const payments = (contract.payments || []) as any[];
 
       for (const p of payments) {
-        // Normalize some fields that might be populated or just ids
         const paymentDate = p.date ? new Date(p.date) : null;
         const isPaid = !!p.isPaid;
-        const status = p.status || null; // e.g. "PENDING"
+        const status = p.status || null;
 
-        // Build unified debt object for UI
         const debtObj = {
           contractId: contract._id,
           contractCustomId: contract.customId || contract._id,
@@ -576,21 +574,16 @@ class DebtorService {
           rawPayment: p,
         };
 
-        // Categorize
         if (!isPaid && debtObj.overdueDays > 0) {
           result.overdue.push(debtObj);
         } else if (!isPaid && status === "PENDING") {
-          // Payment awaiting confirmation in cash desk
           result.pending.push(debtObj);
         } else if (!isPaid) {
-          // Not paid, but not overdue/pending -> upcoming or normal
           result.normal.push(debtObj);
         }
-        // if isPaid -> ignore (not a debtor item)
       }
     }
 
-    // Sort each category
     this.sortDebts(result);
 
     return result;
@@ -598,7 +591,6 @@ class DebtorService {
 
   async getFilteredDebts(customerId: string, filter: string = "all") {
     try {
-      // Load active contracts for the customer with payment details
       const contracts = await Contract.find({
         customer: customerId,
         isActive: true,
@@ -608,18 +600,8 @@ class DebtorService {
         .populate({ path: "payments", options: { sort: { date: -1 } } })
         .lean();
 
-      // Categorize debts based on payments
       const categorized = this.categorizeDebtors(contracts as any[]);
 
-      // Apply simple filter if requested
-      if (filter === "overdue")
-        return { success: true, data: categorized.overdue };
-      if (filter === "pending")
-        return { success: true, data: categorized.pending };
-      if (filter === "normal")
-        return { success: true, data: categorized.normal };
-
-      // Default: return all categories grouped
       return { success: true, data: categorized };
     } catch (error) {
       logger.error("Error fetching debts:", error);
@@ -628,20 +610,17 @@ class DebtorService {
   }
 
   private sortDebts(categorized: CategorizedDebts): void {
-    // Overdue: most overdue first (overdueDays desc), then amount desc
     categorized.overdue.sort((a: any, b: any) => {
       if (b.overdueDays !== a.overdueDays) return b.overdueDays - a.overdueDays;
       return b.amount - a.amount;
     });
 
-    // Pending: newest payments awaiting confirmation first (date desc)
     categorized.pending.sort((a: any, b: any) => {
       const da = a.dueDate ? new Date(a.dueDate).getTime() : 0;
       const db = b.dueDate ? new Date(b.dueDate).getTime() : 0;
       return db - da;
     });
 
-    // Normal/upcoming: nearest due date first (dueDate asc), fall back to amount desc
     categorized.normal.sort((a: any, b: any) => {
       const da =
         a.dueDate ? new Date(a.dueDate).getTime() : Number.MAX_SAFE_INTEGER;

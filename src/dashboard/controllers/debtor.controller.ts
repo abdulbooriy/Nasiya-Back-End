@@ -86,7 +86,6 @@ class DebtorController {
       );
 
       res.status(200).json(data);
-      
     } catch (error) {
       return next(error);
     }

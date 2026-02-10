@@ -19,7 +19,7 @@ export const ContractInfoSchema = new Schema<IContractInfo>(
     receipt: { type: Boolean, default: false },
     iCloud: { type: Boolean, default: false },
   },
-  { _id: false }
+  { _id: false },
 );
 
 export enum ContractStatus {
@@ -29,7 +29,7 @@ export enum ContractStatus {
 }
 
 export interface IContractChange {
-  field: string; // 'monthlyPayment', 'initialPayment', 'totalPrice'
+  field: string;
   oldValue: any;
   newValue: any;
   difference: number;
@@ -39,7 +39,7 @@ export interface IContractEdit {
   date: Date;
   editedBy: IEmployee | string; // Kim tahrirlagan
   changes: IContractChange[]; // O'zgarishlar
-  affectedPayments: (IPayment | string)[]; // Ta'sirlangan to'lovlar
+  affectedPayments: (IPayment | string)[];
   impactSummary: {
     underpaidCount: number;
     overpaidCount: number;
@@ -84,7 +84,7 @@ const ContractChangeSchema = new Schema<IContractChange>(
     newValue: { type: Schema.Types.Mixed, required: true },
     difference: { type: Number, required: true },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const ContractEditSchema = new Schema<IContractEdit>(
@@ -110,12 +110,12 @@ const ContractEditSchema = new Schema<IContractEdit>(
       additionalPaymentsCreated: { type: Number, default: 0 },
     },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const ContractSchema = new Schema<IContract>(
   {
-    customId: { type: String, required: false }, // ✅ YANGI: Custom ID (unique, optional)
+    customId: { type: String, required: false },
     customer: {
       type: Schema.Types.ObjectId,
       ref: "Customer",
@@ -137,10 +137,10 @@ const ContractSchema = new Schema<IContract>(
     totalPrice: { type: Number, required: false },
     startDate: { type: Date, required: true },
     nextPaymentDate: { type: Date, required: false },
-    previousPaymentDate: { type: Date, required: false }, // Kechiktirilgan eski sana
-    postponedAt: { type: Date, required: false }, // Qachon kechiktirilgan
-    originalPaymentDay: { type: Number, required: false }, // Asl to'lov kuni (1-31)
-    isPostponedOnce: { type: Boolean, default: false }, // Faqat bitta oy kechiktirilganmi?
+    previousPaymentDate: { type: Date, required: false },
+    postponedAt: { type: Date, required: false },
+    originalPaymentDay: { type: Number, required: false },
+    isPostponedOnce: { type: Boolean, default: false },
     status: {
       type: String,
       enum: Object.values(ContractStatus),
@@ -166,7 +166,7 @@ const ContractSchema = new Schema<IContract>(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 const Contract = model<IContract>("Contract", ContractSchema);

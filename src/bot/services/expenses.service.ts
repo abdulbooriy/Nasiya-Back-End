@@ -1,12 +1,15 @@
-import Employee, { IEmployee } from "../../schemas/employee.schema";
+import { Types } from "mongoose";
+
 import IJwtUser from "../../types/user";
 
-import BaseError from "../../utils/base.error";
+import Employee, { IEmployee } from "../../schemas/employee.schema";
 import { Balance } from "../../schemas/balance.schema";
 import { Expenses } from "../../schemas/expenses.schema";
-import { Types } from "mongoose";
+
 import { AddExpensesDto, UpdateExpensesDto } from "../../validators/expenses";
 import auditLogService from "../../services/audit-log.service";
+
+import BaseError from "../../utils/base.error";
 
 class ExpensesSrvice {
   async subtractFromBalance(
@@ -14,7 +17,7 @@ class ExpensesSrvice {
     changes: {
       dollar: number;
       sum: number;
-    }
+    },
   ) {
     const balance = await Balance.findOne({ managerId });
 
@@ -83,7 +86,7 @@ class ExpensesSrvice {
       dollar,
       sum,
       addData.notes || "",
-      user.sub
+      user.sub,
     );
 
     return {
@@ -167,7 +170,7 @@ class ExpensesSrvice {
       managerName,
       oldCurrency.dollar,
       oldCurrency.sum,
-      user.sub
+      user.sub,
     );
 
     return {

@@ -1,11 +1,7 @@
-/**
- * Bot Prepaid Routes
- * Zapas Tarixi uchun bot-specific routes
- */
-
 import express, { Router } from "express";
-import { authenticate } from "../../middlewares/auth.middleware";
+
 import prepaidController from "../../dashboard/controllers/prepaid.controller";
+import { authenticate } from "../../middlewares/auth.middleware";
 
 const router: Router = express.Router();
 

@@ -1,4 +1,5 @@
 import { Router } from "express";
+
 import { updatePaymentDate } from "../controllers/contract.controller";
 
 const router = Router();

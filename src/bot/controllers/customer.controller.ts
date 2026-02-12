@@ -1,15 +1,10 @@
 import { Request, Response, NextFunction } from "express";
-import BaseError from "../../utils/base.error";
+
 import customerService from "../services/customer.service";
-import IJwtUser from "../../types/user";
-import { RoleEnum } from "../../enums/role.enum";
+
+import BaseError from "../../utils/base.error";
 import logger from "../../utils/logger";
 
-// const user: IJwtUser = {
-//   sub: "686e7881ab577df7c3eb3db2",
-//   name: "Farhod",
-//   role: RoleEnum.MANAGER,
-// };
 class CustomerController {
   async getAll(req: Request, res: Response, next: NextFunction) {
     try {
@@ -34,12 +29,29 @@ class CustomerController {
 
       const filterDate = req.query.date as string | undefined;
       const data = await customerService.getUnpaidDebtors(user, filterDate);
-      
+
       res.json(data);
     } catch (error) {
       return next(error);
     }
   }
+
+  async getAllDebtors(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = req.user;
+      if (!user) {
+        return next(BaseError.ForbiddenError());
+      }
+
+      const filterDate = req.query.date as string | undefined;
+      const data = await customerService.getAllDebtors(user, filterDate);
+
+      res.json(data);
+    } catch (error) {
+      return next(error);
+    }
+  }
+
   async getPaidDebtors(req: Request, res: Response, next: NextFunction) {
     try {
       const user = req.user;
@@ -88,4 +100,5 @@ class CustomerController {
     }
   }
 }
+
 export default new CustomerController();

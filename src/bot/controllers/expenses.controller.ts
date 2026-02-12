@@ -1,19 +1,14 @@
 import { Request, Response, NextFunction } from "express";
-import BaseError from "../../utils/base.error";
-import IJwtUser from "../../types/user";
-import { RoleEnum } from "../../enums/role.enum";
+
 import { plainToInstance } from "class-transformer";
 import { validate } from "class-validator";
-import { handleValidationErrors } from "../../validators/format";
-import expensesService from "../services/expenses.service";
-import { AddExpensesDto, UpdateExpensesDto } from "../../validators/expenses";
-import logger from "../../utils/logger";
 
-// const user: IJwtUser = {
-//   sub: "686e7881ab577df7c3eb3db2",
-//   name: "Farhod",
-//   role: RoleEnum.MANAGER,
-// };
+import { AddExpensesDto, UpdateExpensesDto } from "../../validators/expenses";
+import { handleValidationErrors } from "../../validators/format";
+
+import expensesService from "../services/expenses.service";
+import BaseError from "../../utils/base.error";
+import logger from "../../utils/logger";
 
 class PaymentController {
   async getAll(req: Request, res: Response, next: NextFunction) {
@@ -38,7 +33,7 @@ class PaymentController {
       if (errors.length > 0) {
         const formattedErrors = handleValidationErrors(errors);
         return next(
-          BaseError.BadRequest("Xarajat ma'lumotlari xato.", formattedErrors)
+          BaseError.BadRequest("Xarajat ma'lumotlari xato.", formattedErrors),
         );
       }
       const data = await expensesService.add(expensesData, user);
@@ -56,7 +51,7 @@ class PaymentController {
       if (errors.length > 0) {
         const formattedErrors = handleValidationErrors(errors);
         return next(
-          BaseError.BadRequest("Xarajat ma'lumotlari xato.", formattedErrors)
+          BaseError.BadRequest("Xarajat ma'lumotlari xato.", formattedErrors),
         );
       }
       const data = await expensesService.update(expensesData, user);

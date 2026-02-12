@@ -1,9 +1,9 @@
+import { Types } from "mongoose";
+
 import IJwtUser from "../../types/user";
 import { Balance } from "../../schemas/balance.schema";
-import { Types } from "mongoose";
 import CurrencyCourse from "../../schemas/currency.schema";
 import Payment from "../../schemas/payment.schema";
-import { PaymentStatusEnum } from "../../enums/payment.enum";
 
 class DashboardSrvice {
   async dashboard(user: IJwtUser) {
@@ -30,7 +30,6 @@ class DashboardSrvice {
       },
     ]);
 
-
     const defaultBalance = {
       dollar: 0,
       sum: 0,
@@ -48,45 +47,46 @@ class DashboardSrvice {
         $match: {
           managerId: new Types.ObjectId(user.sub),
           status: "PAID",
-          date: { 
+          date: {
             $gte: today,
-            $lt: tomorrow
+            $lt: tomorrow,
           },
         },
       },
       {
         $group: {
           _id: null,
-          totalDollar: { 
-            $sum: { 
+          totalDollar: {
+            $sum: {
               $cond: [
                 { $gt: ["$actualAmount", 0] },
                 "$actualAmount",
-                "$amount"
-              ]
-            }
+                "$amount",
+              ],
+            },
           },
-          count: { $sum: 1 }
-        }
-      }
+          count: { $sum: 1 },
+        },
+      },
     ]);
 
-
-    const todayData = todayPayments.length > 0 ? {
-      dollar: todayPayments[0].totalDollar || 0,
-      sum: Math.round((todayPayments[0].totalDollar || 0) * exchangeRate),
-      count: todayPayments[0].count || 0
-    } : {
-      dollar: 0,
-      sum: 0,
-      count: 0
-    };
+    const todayData =
+      todayPayments.length > 0 ?
+        {
+          dollar: todayPayments[0].totalDollar || 0,
+          sum: Math.round((todayPayments[0].totalDollar || 0) * exchangeRate),
+          count: todayPayments[0].count || 0,
+        }
+      : {
+          dollar: 0,
+          sum: 0,
+          count: 0,
+        };
 
     const result = {
       balance: balanceData,
-      today: todayData
+      today: todayData,
     };
-
 
     return {
       status: "success",
@@ -100,7 +100,7 @@ class DashboardSrvice {
 
     return {
       course: currencyCourse?.amount,
-      message: "success"
+      message: "success",
     };
   }
 }

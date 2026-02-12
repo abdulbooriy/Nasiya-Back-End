@@ -8,4 +8,3 @@ export interface MyContext extends Context {
   session: MySession;
   scene: Scenes.SceneContextScene<MyContext>;
 }
-

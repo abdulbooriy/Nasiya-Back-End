@@ -1,5 +1,7 @@
 import { Router } from "express";
+
 import expensesController from "../controllers/expenses.controller";
+
 const router = Router();
 
 router.get("/get-all", expensesController.getAll);

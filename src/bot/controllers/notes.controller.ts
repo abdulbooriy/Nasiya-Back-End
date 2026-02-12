@@ -1,20 +1,14 @@
 import { Request, Response, NextFunction } from "express";
-import BaseError from "../../utils/base.error";
-import customerService from "../services/customer.service";
-import IJwtUser from "../../types/user";
-import { RoleEnum } from "../../enums/role.enum";
+
 import notesService from "../services/notes.service";
 import { plainToInstance } from "class-transformer";
-import { validate } from "class-validator";
+
 import { handleValidationErrors } from "../../validators/format";
 import { NotesDto } from "../../validators/notes";
-import logger from "../../utils/logger";
+import { validate } from "class-validator";
 
-// const user: IJwtUser = {
-//   sub: "686e7881ab577df7c3eb3db2",
-//   name: "Farhod",
-//   role: RoleEnum.MANAGER,
-// };
+import BaseError from "../../utils/base.error";
+import logger from "../../utils/logger";
 
 class NotesController {
   async getById(req: Request, res: Response, next: NextFunction) {
@@ -42,7 +36,7 @@ class NotesController {
       if (errors.length > 0) {
         const formattedErrors = handleValidationErrors(errors);
         return next(
-          BaseError.BadRequest("Izoh ma'lumotlari xato.", formattedErrors)
+          BaseError.BadRequest("Izoh ma'lumotlari xato.", formattedErrors),
         );
       }
       if (!user) {

@@ -1,6 +1,5 @@
 import logger from "../../utils/logger";
 
-
 export function checkTelegramInitData(initData: string): number | null {
   if (!initData) return null;
 

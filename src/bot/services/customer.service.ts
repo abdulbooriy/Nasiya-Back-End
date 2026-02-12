@@ -1,11 +1,12 @@
+import { Types } from "mongoose";
+
 import Contract from "../../schemas/contract.schema";
 import Customer from "../../schemas/customer.schema";
+import { Debtor } from "../../schemas/debtor.schema";
+
 import IJwtUser from "../../types/user";
 import logger from "../../utils/logger";
-
-import { Debtor } from "../../schemas/debtor.schema";
 import BaseError from "../../utils/base.error";
-import { Types } from "mongoose";
 
 class CustomerService {
   async getAll(user: IJwtUser) {
@@ -37,6 +38,260 @@ class CustomerService {
       status: "success",
       data: customers,
     };
+  }
+
+  async getAllDebtors(user: IJwtUser, filterDate?: string) {
+    try {
+      let filterEndDate: Date;
+
+      if (filterDate && filterDate.trim() !== "") {
+        const [year, month, day] = filterDate.split("-").map(Number);
+        filterEndDate = new Date(year, month - 1, day, 23, 59, 59, 999);
+      } else {
+        filterEndDate = new Date();
+        filterEndDate.setHours(23, 59, 59, 999);
+      }
+
+      const managerId = new Types.ObjectId(user.sub);
+
+      const result = await Contract.aggregate([
+        {
+          $match: {
+            isActive: true,
+            isDeleted: false,
+            status: "active",
+          },
+        },
+        {
+          $lookup: {
+            from: "customers",
+            localField: "customer",
+            foreignField: "_id",
+            as: "customerData",
+          },
+        },
+        {
+          $unwind: { path: "$customerData", preserveNullAndEmptyArrays: false },
+        },
+        {
+          $match: {
+            "customerData.manager": managerId,
+            "customerData.isActive": true,
+            "customerData.isDeleted": false,
+          },
+        },
+        {
+          $lookup: {
+            from: "payments",
+            localField: "payments",
+            foreignField: "_id",
+            as: "paymentDetails",
+          },
+        },
+        {
+          $addFields: {
+            unpaidPayments: {
+              $filter: {
+                input: "$paymentDetails",
+                as: "p",
+                cond: { $eq: ["$$p.isPaid", false] },
+              },
+            },
+            paidPayments: {
+              $filter: {
+                input: "$paymentDetails",
+                as: "p",
+                cond: { $eq: ["$$p.isPaid", true] },
+              },
+            },
+            pendingPayments: {
+              $filter: {
+                input: "$paymentDetails",
+                as: "p",
+                cond: {
+                  $and: [
+                    { $eq: ["$$p.status", "PENDING"] },
+                    { $eq: ["$$p.isPaid", false] },
+                  ],
+                },
+              },
+            },
+            recentPaidPayments: {
+              $filter: {
+                input: "$paymentDetails",
+                as: "p",
+                cond: {
+                  $and: [
+                    { $eq: ["$$p.status", "PAID"] },
+                    { $eq: ["$$p.isPaid", true] },
+                    {
+                      $gte: [
+                        "$$p.confirmedAt",
+                        new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        },
+        {
+          $addFields: {
+            totalPaid: {
+              $sum: {
+                $map: {
+                  input: "$paidPayments",
+                  as: "pp",
+                  in: { $ifNull: ["$$pp.actualAmount", "$$pp.amount"] },
+                },
+              },
+            },
+            paidMonthsCount: {
+              $size: {
+                $filter: {
+                  input: "$paymentDetails",
+                  as: "p",
+                  cond: {
+                    $and: [
+                      { $eq: ["$$p.isPaid", true] },
+                      { $eq: ["$$p.paymentType", "monthly"] },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        },
+        {
+          $addFields: {
+            remainingDebt: {
+              $subtract: [{ $ifNull: ["$totalPrice", "$price"] }, "$totalPaid"],
+            },
+            delayDays: {
+              $cond: {
+                if: { $ne: ["$nextPaymentDate", null] },
+                then: {
+                  $floor: {
+                    $divide: [
+                      { $subtract: [filterEndDate, "$nextPaymentDate"] },
+                      1000 * 60 * 60 * 24,
+                    ],
+                  },
+                },
+                else: 0,
+              },
+            },
+          },
+        },
+        {
+          $addFields: {
+            isPending: {
+              $gt: [{ $size: "$pendingPayments" }, 0],
+            },
+            hasPaidPayments: {
+              $gt: [{ $size: "$recentPaidPayments" }, 0],
+            },
+            nextPaymentStatus: {
+              $cond: {
+                if: { $gt: [{ $size: "$pendingPayments" }, 0] },
+                then: "PENDING",
+                else: {
+                  $cond: {
+                    if: { $gt: [{ $size: "$recentPaidPayments" }, 0] },
+                    then: "PAID",
+                    else: {
+                      $cond: {
+                        if: { $eq: ["$nextPaymentDate", null] },
+                        then: "COMPLETED",
+                        else: {
+                          $cond: {
+                            if: { $gt: ["$delayDays", 0] },
+                            then: "OVERDUE",
+                            else: {
+                              $cond: {
+                                if: { $eq: ["$delayDays", 0] },
+                                then: "TODAY",
+                                else: "UPCOMING",
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        {
+          $match: {
+            $or: [
+              { remainingDebt: { $gt: 0 } },
+              { isPending: true },
+              { hasPaidPayments: true },
+            ],
+          },
+        },
+        {
+          $project: {
+            _id: "$_id",
+            customerId: "$customerData._id",
+            fullName: "$customerData.fullName",
+            phoneNumber: "$customerData.phoneNumber",
+            productName: "$productName",
+            contractId: "$_id",
+            remainingDebt: "$remainingDebt",
+            delayDays: "$delayDays",
+            nextPaymentDate: "$nextPaymentDate",
+            totalPrice: { $ifNull: ["$totalPrice", "$price"] },
+            totalPaid: "$totalPaid",
+            startDate: "$startDate",
+            initialPaymentDueDate: "$initialPaymentDueDate",
+            period: "$period",
+            paidMonthsCount: "$paidMonthsCount",
+            monthlyPayment: "$monthlyPayment",
+            initialPayment: "$initialPayment",
+            isPending: "$isPending",
+            hasPaidPayments: "$hasPaidPayments",
+            nextPaymentStatus: "$nextPaymentStatus",
+            lastPaymentDate: {
+              $max: "$recentPaidPayments.confirmedAt",
+            },
+          },
+        },
+        {
+          $sort: {
+            nextPaymentStatus: 1,
+            delayDays: -1,
+            remainingDebt: -1,
+          },
+        },
+      ]);
+
+      logger.debug(`✅ Barcha qarzdorlar ro'yxati:`, {
+        count: result.length,
+        statuses: result.reduce((acc: any, item: any) => {
+          acc[item.nextPaymentStatus] = (acc[item.nextPaymentStatus] || 0) + 1;
+          return acc;
+        }, {}),
+        sample:
+          result.length > 0 ?
+            {
+              name: result[0].fullName,
+              status: result[0].nextPaymentStatus,
+              isPending: result[0].isPending,
+              hasPaidPayments: result[0].hasPaidPayments,
+              delayDays: result[0].delayDays,
+            }
+          : null,
+      });
+
+      return { status: "success", data: result };
+    } catch (error) {
+      throw BaseError.InternalServerError(String(error));
+    }
   }
 
   async getUnpaidDebtors(user: IJwtUser, filterDate?: string) {
@@ -457,7 +712,7 @@ class CustomerService {
                   as: "payment",
                   in: {
                     $ifNull: ["$$payment.actualAmount", "$$payment.amount"],
-                  }, // ✅ TUZATILDI: to'g'ri format
+                  },
                 },
               },
             },

@@ -1,6 +1,4 @@
-// import { session } from "telegraf";
 import logger from "../utils/logger";
-// import axiosInstance from "../service/server/api";
 import bot from "./core/bot";
 import session from "./core/session";
 import stage from "./scenes";

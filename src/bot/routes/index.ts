@@ -15,7 +15,6 @@ import debtorRoute from "./debtor.routes";
 const routes = Router();
 
 routes.use("/auth", authRoute);
-// routes.use("/user", userRoute);
 routes.use("/customer", botManager, customerRoute);
 routes.use("/payment", botManager, paymentRoute);
 routes.use("/contract", botManager, contractRoute);

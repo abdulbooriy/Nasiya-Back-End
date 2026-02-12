@@ -1,24 +1,20 @@
 import { Request, Response, NextFunction } from "express";
-import authService from "../services/user.service";
-import { plainToInstance } from "class-transformer";
-import { LoginDto } from "../../validators/auth";
-import { handleValidationErrors } from "../../validators/format";
-import { validate } from "class-validator";
-import BaseError from "../../utils/base.error";
-import { profile } from "console";
-import { checkTelegramInitData } from "../utils/checkInitData";
-import config from "../utils/config";
-import logger from "../../utils/logger";
+
 import Employee from "../../schemas/employee.schema";
+
 import IEmployeeData from "../../types/employeeData";
 import IJwtUser from "../../types/user";
+
+import { checkTelegramInitData } from "../utils/checkInitData";
+import BaseError from "../../utils/base.error";
+import logger from "../../utils/logger";
 import jwt from "../../utils/jwt";
 
 class AuthController {
   async checkRegistration(req: Request, res: Response, next: NextFunction) {
     try {
       logger.debug("🔍 Check registration request received");
-      
+
       const { initData } = req.body;
 
       if (!initData) {
@@ -48,7 +44,7 @@ class AuthController {
       logger.debug("✅ checkRegistration natija:", {
         isRegistered,
         telegramId: telegramId.toString(),
-        employeeFound: !!employee
+        employeeFound: !!employee,
       });
 
       res.json({
@@ -72,7 +68,10 @@ class AuthController {
   async telegram(req: Request, res: Response, next: NextFunction) {
     try {
       logger.debug("🔐 Telegram auth request received");
-      logger.debug("📦 Request body:", JSON.stringify(req.body).substring(0, 200));
+      logger.debug(
+        "📦 Request body:",
+        JSON.stringify(req.body).substring(0, 200),
+      );
 
       const { initData } = req.body;
 
@@ -98,7 +97,10 @@ class AuthController {
         isDeleted: false,
       }).populate("role");
 
-      logger.debug("🔍 Employee qidiruv natijasi:", employee ? "Topildi" : "Topilmadi");
+      logger.debug(
+        "🔍 Employee qidiruv natijasi:",
+        employee ? "Topildi" : "Topilmadi",
+      );
 
       if (!employee) {
         logger.error("❌ Employee topilmadi, telegramId:", telegramId);
@@ -108,7 +110,7 @@ class AuthController {
       logger.debug("✅ Employee topildi:", {
         id: employee.id,
         name: `${employee.firstName} ${employee.lastName}`,
-        role: employee.role?.name
+        role: employee.role?.name,
       });
 
       const employeeData: IEmployeeData = {

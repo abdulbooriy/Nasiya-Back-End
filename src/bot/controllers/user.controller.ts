@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+
 import userService from "../services/user.service";
 
 class UserController {
@@ -15,6 +16,7 @@ class UserController {
       return next(error);
     }
   }
+
   async phone(req: Request, res: Response, next: NextFunction) {
     try {
       const { telegramId, phoneNumber } = req.body;

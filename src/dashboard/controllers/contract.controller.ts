@@ -1,14 +1,15 @@
 import { Request, Response, NextFunction } from "express";
+
 import { plainToInstance } from "class-transformer";
 import { validate } from "class-validator";
 import { handleValidationErrors } from "../../validators/format";
-import BaseError from "../../utils/base.error";
-import contractService from "../services/contract.service";
 import {
   CreateContractDto,
-  SellerCreateContractDto,
   UpdateContractDto,
 } from "../../validators/contract";
+
+import BaseError from "../../utils/base.error";
+import contractService from "../services/contract.service";
 
 class ContractController {
   async getAll(req: Request, res: Response, next: NextFunction) {
@@ -57,7 +58,7 @@ class ContractController {
       if (errors.length > 0) {
         const formattedErrors = handleValidationErrors(errors);
         return next(
-          BaseError.BadRequest("Shartnoma ma'lumotlari xato.", formattedErrors)
+          BaseError.BadRequest("Shartnoma ma'lumotlari xato.", formattedErrors),
         );
       }
 
@@ -68,15 +69,14 @@ class ContractController {
     }
   }
 
-
   async update(req: Request, res: Response, next: NextFunction) {
     try {
       const user = req.user;
       if (!user) {
         return next(
           BaseError.UnauthorizedError(
-            "Foydalanuvchi autentifikatsiya qilinmagan"
-          )
+            "Foydalanuvchi autentifikatsiya qilinmagan",
+          ),
         );
       }
 
@@ -86,7 +86,7 @@ class ContractController {
       if (errors.length > 0) {
         const formattedErrors = handleValidationErrors(errors);
         return next(
-          BaseError.BadRequest("Shartnoma ma'lumotlari xato.", formattedErrors)
+          BaseError.BadRequest("Shartnoma ma'lumotlari xato.", formattedErrors),
         );
       }
 
@@ -124,7 +124,7 @@ class ContractController {
       if (errors.length > 0) {
         const formattedErrors = handleValidationErrors(errors);
         return next(
-          BaseError.BadRequest("Shartnoma ma'lumotlari xato.", formattedErrors)
+          BaseError.BadRequest("Shartnoma ma'lumotlari xato.", formattedErrors),
         );
       }
       const data = await contractService.sellerCreate(contractData, user);
@@ -164,7 +164,7 @@ class ContractController {
 
       if (totalPrice !== undefined && totalPrice <= initialPayment) {
         throw BaseError.BadRequest(
-          "Umumiy narx boshlang'ich to'lovdan katta bo'lishi kerak"
+          "Umumiy narx boshlang'ich to'lovdan katta bo'lishi kerak",
         );
       }
 
@@ -191,8 +191,8 @@ class ContractController {
       if (!user) {
         return next(
           BaseError.UnauthorizedError(
-            "Foydalanuvchi autentifikatsiya qilinmagan"
-          )
+            "Foydalanuvchi autentifikatsiya qilinmagan",
+          ),
         );
       }
 
@@ -217,8 +217,8 @@ class ContractController {
       if (!user) {
         return next(
           BaseError.UnauthorizedError(
-            "Foydalanuvchi autentifikatsiya qilinmagan"
-          )
+            "Foydalanuvchi autentifikatsiya qilinmagan",
+          ),
         );
       }
 
@@ -228,6 +228,52 @@ class ContractController {
         success: true,
         message: result.message,
         data: result,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  async bulkHardDeleteContracts(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const { contractIds } = req.body;
+      const user = req.user;
+
+      if (!user) {
+        return next(
+          BaseError.UnauthorizedError(
+            "Foydalanuvchi autentifikatsiya qilinmagan",
+          ),
+        );
+      }
+
+      if (!Array.isArray(contractIds) || contractIds.length === 0) {
+        return next(
+          BaseError.BadRequest("contractIds bo'sh bo'lishi mumkin emas"),
+        );
+      }
+
+      const results: { id: string; success: boolean; message: string }[] = [];
+      const errors: { id: string; success: boolean; message: string }[] = [];
+
+      for (const id of contractIds) {
+        try {
+          const result = await contractService.hardDeleteContract(id, user);
+          results.push({ id, success: true, message: result.message });
+        } catch (err: any) {
+          errors.push({ id, success: false, message: err.message });
+        }
+      }
+
+      res.status(200).json({
+        success: true,
+        message: `${results.length} ta shartnoma o'chirildi`,
+        data: { results, errors },
         timestamp: new Date().toISOString(),
       });
     } catch (error) {

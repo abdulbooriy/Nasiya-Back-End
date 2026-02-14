@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+
 import { plainToInstance } from "class-transformer";
 import { validate } from "class-validator";
 import { handleValidationErrors } from "../../validators/format";
@@ -10,6 +11,7 @@ import {
   UpdateCustomerDto,
   UpdateManagerDto,
 } from "../../validators/customer";
+
 class CustomerController {
   async getAllCustomer(req: Request, res: Response, next: NextFunction) {
     try {
@@ -19,6 +21,7 @@ class CustomerController {
       return next(error);
     }
   }
+
   async getAll(req: Request, res: Response, next: NextFunction) {
     try {
       const data = await customerService.getAll();
@@ -83,7 +86,7 @@ class CustomerController {
       if (errors.length > 0) {
         const formattedErrors = handleValidationErrors(errors);
         return next(
-          BaseError.BadRequest("Mijoz ma'lumotlari xato.", formattedErrors)
+          BaseError.BadRequest("Mijoz ma'lumotlari xato.", formattedErrors),
         );
       }
       const data = await customerService.create(customerData, user, req.files);
@@ -101,7 +104,7 @@ class CustomerController {
       if (errors.length > 0) {
         const formattedErrors = handleValidationErrors(errors);
         return next(
-          BaseError.BadRequest("Mijoz malumotlari xato.", formattedErrors)
+          BaseError.BadRequest("Mijoz malumotlari xato.", formattedErrors),
         );
       }
       const data = await customerService.update(customerData, req.files, user); // ✅ User'ni pass qilish
@@ -138,7 +141,7 @@ class CustomerController {
       if (errors.length > 0) {
         const formattedErrors = handleValidationErrors(errors);
         return next(
-          BaseError.BadRequest("Ma'lumotlari xato.", formattedErrors)
+          BaseError.BadRequest("Ma'lumotlari xato.", formattedErrors),
         );
       }
       const data = await customerService.updateManager(resData);
@@ -155,7 +158,7 @@ class CustomerController {
       if (errors.length > 0) {
         const formattedErrors = handleValidationErrors(errors);
         return next(
-          BaseError.BadRequest("Ma'lumotlari xato.", formattedErrors)
+          BaseError.BadRequest("Ma'lumotlari xato.", formattedErrors),
         );
       }
       const data = await customerService.confirmationCustomer(resData);
@@ -166,27 +169,91 @@ class CustomerController {
   }
 
   // seller
-
   async sellerCreate(req: Request, res: Response, next: NextFunction) {
     try {
       const user = req.user;
       const customerData = plainToInstance(
         SellerCreateCustomerDto,
-        req.body || {}
+        req.body || {},
       );
       const errors = await validate(customerData);
       if (errors.length > 0) {
         const formattedErrors = handleValidationErrors(errors);
         return next(
-          BaseError.BadRequest("Mijoz ma'lumotlari xato.", formattedErrors)
+          BaseError.BadRequest("Mijoz ma'lumotlari xato.", formattedErrors),
         );
       }
       const data = await customerService.sellerCreate(
         customerData,
         user,
-        req.files
+        req.files,
       );
       res.status(201).json(data);
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  async hardDeleteCustomer(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const user = req.user;
+
+      if (!user) {
+        return next(
+          BaseError.UnauthorizedError(
+            "Foydalanuvchi autentifikatsiya qilinmagan",
+          ),
+        );
+      }
+
+      const result = await customerService.hardDeleteCustomer(id, user);
+
+      res.status(200).json({
+        success: true,
+        message: result.message,
+        data: result,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  async bulkHardDeleteCustomers(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const { customerIds } = req.body;
+      const user = req.user;
+
+      if (!user) {
+        return next(
+          BaseError.UnauthorizedError(
+            "Foydalanuvchi autentifikatsiya qilinmagan",
+          ),
+        );
+      }
+
+      if (!Array.isArray(customerIds) || customerIds.length === 0) {
+        return next(
+          BaseError.BadRequest("customerIds bo'sh bo'lishi mumkin emas"),
+        );
+      }
+
+      const result = await customerService.bulkHardDeleteCustomers(
+        customerIds,
+        user,
+      );
+
+      res.status(200).json({
+        success: true,
+        message: result.message,
+        data: result,
+        timestamp: new Date().toISOString(),
+      });
     } catch (error) {
       return next(error);
     }

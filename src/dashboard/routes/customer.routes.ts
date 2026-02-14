@@ -9,77 +9,105 @@ const router = Router();
 router.get(
   "/get-all-customer",
   checkPermission(Permission.VIEW_CUSTOMER),
-  customerController.getAllCustomer
+  customerController.getAllCustomer,
 );
 
 router.get(
   "/get-all",
   checkPermission(Permission.VIEW_CUSTOMER),
-  customerController.getAll
+  customerController.getAll,
 );
 
 router.get(
   "/get-new-all",
   checkPermission(Permission.VIEW_CUSTOMER),
-  customerController.getNewAll
+  customerController.getNewAll,
 );
 
 router.get(
   "/get-customer-by-id/:id",
   checkPermission(Permission.VIEW_CONTRACT),
-  customerController.getCustomerById
+  customerController.getCustomerById,
 );
 
 router.get(
   "/check-phone",
   checkPermission(Permission.VIEW_CUSTOMER),
-  customerController.checkPhone
+  customerController.checkPhone,
 );
 
 router.get(
   "/check-passport",
   checkPermission(Permission.VIEW_CUSTOMER),
-  customerController.checkPassport
+  customerController.checkPassport,
 );
 
 router.post(
   "",
   checkPermission(Permission.CREATE_CUSTOMER),
   uploadCustomerFiles,
-  customerController.create
+  customerController.create,
 );
+
 // seller
 router.post(
   "/seller",
   checkPermission(Permission.CUSTOMER_CREATE_MANAGER),
   uploadCustomerFiles,
-  customerController.sellerCreate
+  customerController.sellerCreate,
 );
+
 router.put(
   "",
   checkPermission(Permission.UPDATE_CUSTOMER),
   uploadCustomerFiles,
-  customerController.update
+  customerController.update,
 );
+
+// ========================================
+// 🔥 HARD DELETE CUSTOMER (PERMANENT)
+// ONLY: admin, moderator
+// ⚠️ WARNING: This action is IRREVERSIBLE!
+// ========================================
+router.delete(
+  "/hard-delete/:id",
+  checkPermission(Permission.DELETE_CUSTOMER),
+  customerController.hardDeleteCustomer,
+);
+
+// ========================================
+// 🔥 BULK HARD DELETE CUSTOMERS (PERMANENT)
+// ONLY: admin, moderator
+// ⚠️ WARNING: This action is IRREVERSIBLE!
+// ========================================
+router.delete(
+  "/bulk-hard-delete",
+  checkPermission(Permission.DELETE_CUSTOMER),
+  customerController.bulkHardDeleteCustomers,
+);
+
 router.delete(
   "/:id",
   checkPermission(Permission.DELETE_CUSTOMER),
-  customerController.delete
+  customerController.delete,
 );
+
 router.put(
   "/restoration/:id",
   checkPermission(Permission.UPDATE_CUSTOMER),
-  customerController.restoration
+  customerController.restoration,
 );
+
 router.put(
   "/manager",
   checkPermission(Permission.UPDATE_CUSTOMER),
-  customerController.updateManager
+  customerController.updateManager,
 );
+
 router.put(
   "/confirmation",
   checkPermission(Permission.UPDATE_CUSTOMER),
-  customerController.confirmationCustomer
+  customerController.confirmationCustomer,
 );
 
 export default router;

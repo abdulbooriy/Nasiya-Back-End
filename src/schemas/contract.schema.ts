@@ -74,6 +74,7 @@ export interface IContract extends IBase {
   status: ContractStatus;
   payments: IPayment[] | string[];
   prepaidBalance?: number; // Oldindan to'langan balans
+  currency?: "USD" | "UZS"; // ✅ YANGI: Pul birligi (USD yoki UZS)
   editHistory?: IContractEdit[]; // Tahrirlash tarixi
 }
 
@@ -161,6 +162,7 @@ const ContractSchema = new Schema<IContract>(
       default: false,
     },
     prepaidBalance: { type: Number, default: 0 },
+    currency: { type: String, enum: ["USD", "UZS"], default: "USD" },
     editHistory: { type: [ContractEditSchema], default: [] },
     ...BaseSchema,
   },

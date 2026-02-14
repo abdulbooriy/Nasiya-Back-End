@@ -9,6 +9,7 @@ import {
   IsDateString,
   IsBoolean,
   IsArray,
+  IsIn,
   ValidateNested,
 } from "class-validator";
 
@@ -66,6 +67,11 @@ class ContractDto {
   @IsBoolean({ message: "iCloud boolean bo'lishi kerak" })
   @IsNotEmpty({ message: "iCloud bo'sh bo'lmasligi kerak" })
   iCloud: boolean;
+
+  @IsOptional()
+  @IsString({ message: "Pul birligi satr bo'lishi kerak" })
+  @IsIn(["USD", "UZS"], { message: "Pul birligi USD yoki UZS bo'lishi kerak" })
+  currency?: string;
 }
 
 export class CreatePaymentItemDto {

@@ -256,6 +256,7 @@ class CustomerService {
             isPending: "$isPending",
             hasPaidPayments: "$hasPaidPayments",
             nextPaymentStatus: "$nextPaymentStatus",
+            currency: { $ifNull: ["$currency", "USD"] },
             lastPaymentDate: {
               $max: "$recentPaidPayments.confirmedAt",
             },

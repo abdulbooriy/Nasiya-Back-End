@@ -194,6 +194,7 @@ class ContractService {
         receipt,
         iCloud,
         startDate,
+        currency, // ✅ YANGI: Pul birligi
       } = data;
 
       // 1. Validate employee
@@ -270,6 +271,7 @@ class ContractService {
         payments: [],
         isDeclare: false,
         status: ContractStatus.ACTIVE,
+        currency: currency || "USD", // ✅ YANGI: Pul birligi
       });
 
       await contract.save();
@@ -356,6 +358,7 @@ class ContractService {
         receipt,
         iCloud,
         startDate,
+        currency, // ✅ YANGI: Pul birligi
       } = data;
 
       // 1. Validate employee
@@ -426,6 +429,7 @@ class ContractService {
         payments: [],
         isDeclare: false,
         status: ContractStatus.ACTIVE,
+        currency: currency || "USD", // ✅ YANGI: Pul birligi
       });
 
       await contract.save();

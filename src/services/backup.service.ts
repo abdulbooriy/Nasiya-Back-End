@@ -71,7 +71,7 @@ class BackupService {
             fs.unlinkSync(excelFilePath);
             logger.debug(
               "🗑️ Excel backup file deleted after upload:",
-              path.basename(excelFilePath)
+              path.basename(excelFilePath),
             );
           }
         } catch (deleteError: any) {
@@ -131,7 +131,7 @@ class BackupService {
 
       if (!this.backupBot) {
         throw new Error(
-          "Backup bot not initialized (TELEGRAM_BOT_TOKEN missing)"
+          "Backup bot not initialized (TELEGRAM_BOT_TOKEN missing)",
         );
       }
 
@@ -153,7 +153,7 @@ class BackupService {
         `✅ Import qilishga tayyor`;
 
       logger.info(
-        `📤 Sending backup to Telegram channel: ${this.telegramChannelId}...`
+        `📤 Sending backup to Telegram channel: ${this.telegramChannelId}...`,
       );
 
       await this.backupBot.telegram.sendDocument(
@@ -164,7 +164,7 @@ class BackupService {
         },
         {
           caption,
-        }
+        },
       );
 
       logger.info("✅ Backup sent to Telegram successfully");
@@ -200,7 +200,7 @@ class BackupService {
 
       if (files.length > 0) {
         logger.debug(
-          `🧹 Cleaned all ${files.length} backup file(s) from exports/`
+          `🧹 Cleaned all ${files.length} backup file(s) from exports/`,
         );
       }
     } catch (error: any) {
@@ -219,10 +219,13 @@ class BackupService {
       this.createBackup();
     }, 10000);
 
-    // Har 1 daqiqada backup
-    setInterval(() => {
-      this.createBackup();
-    }, 6 * 60 * 60 * 1000); // 6soat
+    // Har 50 daqiqada zaxiralash
+    setInterval(
+      () => {
+        this.createBackup();
+      },
+      50 * 60 * 1000,
+    ); // har 50-daqiqada barcha ma'lumotlarni zaxiralab turadi
 
     logger.info("✅ Excel backup service started (1 min interval)");
   }

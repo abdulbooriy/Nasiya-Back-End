@@ -94,6 +94,12 @@ router.delete(
   contractController.hardDeleteContract,
 );
 
+router.delete(
+  "/bulk-hard-delete",
+  checkPermission(Permission.DELETE_CONTRACT),
+  contractController.bulkHardDeleteContracts,
+);
+
 // ========================================
 // 📅 CONTRACT DATE EDIT ROUTES
 // ONLY: admin, moderator

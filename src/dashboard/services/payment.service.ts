@@ -13,17 +13,14 @@ import contractQueryService from "./contract/contract.query.service";
 import Customer from "../../schemas/customer.schema";
 import logger from "../../utils/logger";
 import { withTransaction } from "../../utils/transaction.wrapper";
-import { RoleEnum } from "../../enums/role.enum";
 import {
   PAYMENT_CONSTANTS,
-  calculatePaymentStatus,
   applyPrepaidBalance,
   createPaymentNoteText,
   createPaymentResponseMessage,
   createRemainingPaymentNote,
   createAutoRejectionNote,
   PAYMENT_MESSAGES,
-  areAmountsEqual,
   isAmountPositive,
   calculatePaymentAmounts,
 } from "../../utils/helpers/payment";
@@ -2248,6 +2245,138 @@ class PaymentService {
       logger.error("❌ Error checking expired payments:", error);
       throw error;
     }
+  }
+
+  async editPaymentAmount(
+    paymentId: string,
+    newActualAmount: number,
+    user: IJwtUser,
+  ) {
+    // 1. To'lovni topish
+    const payment = await Payment.findById(paymentId);
+    if (!payment) {
+      throw BaseError.NotFoundError("To'lov topilmadi");
+    }
+
+    // 2. Faqat tasdiqlangan to'lovlarni tahrirlash mumkin
+    if (!payment.isPaid) {
+      throw BaseError.BadRequest(
+        "Faqat tasdiqlangan (isPaid=true) to'lovni tahrirlash mumkin",
+      );
+    }
+
+    // 3. Ruxsat tekshirish
+    const employee = await Employee.findById(user.sub).populate("role");
+    const roleName = (employee?.role as any)?.name;
+    const canEdit = roleName === "admin" || roleName === "moderator";
+    if (!canEdit) {
+      throw BaseError.ForbiddenError(
+        "Tahrirlash uchun Admin yoki Moderator huquqi kerak",
+      );
+    }
+
+    const oldActualAmount = payment.actualAmount ?? payment.amount;
+    const difference = newActualAmount - oldActualAmount;
+
+    // 4. To'lov summasini yangilash
+    payment.actualAmount = newActualAmount;
+
+    // expectedAmount ga nisbatan status va remainingAmount ni qayta hisoblash
+    const expected = payment.expectedAmount ?? payment.amount;
+    const newRemaining = expected - newActualAmount;
+
+    if (newRemaining > 0.001) {
+      payment.remainingAmount = newRemaining;
+      payment.excessAmount = 0;
+      payment.status = PaymentStatus.UNDERPAID;
+    } else if (newRemaining < -0.001) {
+      payment.remainingAmount = 0;
+      payment.excessAmount = Math.abs(newRemaining);
+      payment.status = PaymentStatus.OVERPAID;
+    } else {
+      payment.remainingAmount = 0;
+      payment.excessAmount = 0;
+      payment.status = PaymentStatus.PAID;
+    }
+
+    await payment.save();
+
+    // 5. Notes'ni yangilash - to'lov holati o'zgarganda izoh ham yangilansin
+    if (payment.notes) {
+      const notesDoc = await Notes.findById(payment.notes);
+      if (notesDoc) {
+        // Eski ⚠️ Qisman / ✅ Tahrirlandi qismini olib tashlash
+        let baseText = notesDoc.text
+          .replace(/\n⚠️ Qisman to'landi:[^\n]*/g, "")
+          .replace(/\n✏️ \[TAHRIRLANDI\]:[^\n]*/g, "")
+          .replace(/\n✅ To'liq to'landi \(tahrirlangan\)[^\n]*/g, "")
+          .trim();
+
+        // Yangi holat bo'yicha matn qo'shish
+        if (payment.status === PaymentStatus.UNDERPAID) {
+          baseText += `\n⚠️ Qisman to'landi: ${payment.remainingAmount?.toFixed(2)} $ yetishmayapti`;
+        } else if (payment.status === PaymentStatus.PAID) {
+          baseText += `\n✅ To'liq to'landi (tahrirlangan)`;
+        } else if (payment.status === PaymentStatus.OVERPAID) {
+          baseText += `\n✅ To'liq to'landi, ${payment.excessAmount?.toFixed(2)} $ ortiqcha (tahrirlangan)`;
+        }
+
+        baseText += `\n✏️ [TAHRIRLANDI]: ${oldActualAmount} $ → ${newActualAmount} $`;
+        notesDoc.text = baseText;
+        await notesDoc.save();
+        logger.info(`📝 Notes updated for payment ${paymentId}`);
+      }
+    }
+
+    // 6. Balansni farq bo'yicha yangilash
+    if (Math.abs(difference) > 0.001 && payment.managerId) {
+      await Balance.findOneAndUpdate(
+        { managerId: payment.managerId },
+        { $inc: { dollar: difference } },
+      );
+      logger.info(
+        `💰 Balance updated: managerId=${payment.managerId}, diff=${difference}`,
+      );
+    }
+
+    // 8. Audit log
+    const { AuditAction, AuditEntity } =
+      await import("../../schemas/audit-log.schema");
+    const auditLogService = (await import("../../services/audit-log.service"))
+      .default;
+
+    await auditLogService.createLog({
+      action: AuditAction.UPDATE,
+      entity: AuditEntity.PAYMENT,
+      entityId: paymentId,
+      userId: user.sub,
+      changes: [
+        {
+          field: "actualAmount",
+          oldValue: oldActualAmount,
+          newValue: newActualAmount,
+        },
+      ],
+      metadata: {
+        amount: newActualAmount,
+        actualAmount: newActualAmount,
+        paymentStatus: payment.status,
+        remainingAmount: payment.remainingAmount,
+      },
+    });
+
+    logger.info(
+      `✅ Payment amount edited: paymentId=${paymentId}, old=${oldActualAmount}, new=${newActualAmount}`,
+    );
+
+    return {
+      message: "To'lov summasi muvaffaqiyatli yangilandi",
+      paymentId,
+      oldActualAmount,
+      newActualAmount,
+      difference,
+      newStatus: payment.status,
+    };
   }
 }
 

@@ -12,6 +12,9 @@ import {
 import IJwtUser from "../../types/user";
 import Employee from "../../schemas/employee.schema";
 import Contract from "../../schemas/contract.schema";
+import Payment from "../../schemas/payment.schema";
+import { Debtor } from "../../schemas/debtor.schema";
+import Notes from "../../schemas/notes.schema";
 import { Types } from "mongoose";
 
 class CustomerService {
@@ -52,7 +55,7 @@ class CustomerService {
             {
               $project: {
                 _id: 1,
-                originalPaymentDay: 1,  // ✅ originalPaymentDay ni qo'shish
+                originalPaymentDay: 1, // ✅ originalPaymentDay ni qo'shish
                 createdAt: 1,
               },
             },
@@ -91,7 +94,7 @@ class CustomerService {
           createBy: 1,
           createdAt: "$latestContractDate", // ✅ Eng YANGI (oxirgi) shartnoma sanasini qaytarish
           updatedAt: 1,
-          contracts: 1,  // ✅ contracts arrayni qaytarish
+          contracts: 1, // ✅ contracts arrayni qaytarish
           manager: {
             $cond: {
               if: { $ifNull: ["$manager._id", false] },
@@ -147,7 +150,7 @@ class CustomerService {
             {
               $project: {
                 _id: 1,
-                originalPaymentDay: 1,  // ✅ originalPaymentDay ni qo'shish
+                originalPaymentDay: 1, // ✅ originalPaymentDay ni qo'shish
                 createdAt: 1,
               },
             },
@@ -177,7 +180,7 @@ class CustomerService {
           passportSeries: 1,
           birthDate: 1,
           createdAt: "$latestContractDate", // ✅ Eng YANGI (oxirgi) shartnoma sanasini qaytarish
-          contracts: 1,  // ✅ contracts arrayni qaytarish
+          contracts: 1, // ✅ contracts arrayni qaytarish
           manager: {
             $ifNull: [
               {
@@ -218,7 +221,7 @@ class CustomerService {
             {
               $project: {
                 _id: 1,
-                originalPaymentDay: 1,  // ✅ originalPaymentDay ni qo'shish
+                originalPaymentDay: 1, // ✅ originalPaymentDay ni qo'shish
                 createdAt: 1,
               },
             },
@@ -258,7 +261,7 @@ class CustomerService {
           createBy: 1,
           createdAt: "$latestContractDate", // ✅ Eng YANGI (oxirgi) shartnoma sanasini qaytarish
           updatedAt: 1,
-          contracts: 1,  // ✅ contracts arrayni qaytarish (originalPaymentDay bilan)
+          contracts: 1, // ✅ contracts arrayni qaytarish (originalPaymentDay bilan)
         },
       },
       { $sort: { createdAt: -1 } },
@@ -335,7 +338,7 @@ class CustomerService {
               $project: {
                 _id: 1,
                 amount: 1,
-                actualAmount: 1, 
+                actualAmount: 1,
                 date: 1,
                 isPaid: 1,
                 paymentType: 1,
@@ -377,18 +380,29 @@ class CustomerService {
           // 1. Basic price field safety
           safeInitial: { $ifNull: ["$initialPayment", 0] },
           safeMonthly: { $ifNull: ["$monthlyPayment", 0] },
-          safeOriginal: { $ifNull: ["$originalPrice", { $ifNull: ["$price", 0] }] },
-          safePrice: { $ifNull: ["$price", { $ifNull: ["$originalPrice", 0] }] },
+          safeOriginal: {
+            $ifNull: ["$originalPrice", { $ifNull: ["$price", 0] }],
+          },
+          safePrice: {
+            $ifNull: ["$price", { $ifNull: ["$originalPrice", 0] }],
+          },
 
           // 2. Period recovery (treat 0 as missing)
           rawPeriod: {
             $cond: [
-              { $gt: [{ $ifNull: ["$period", { $ifNull: ["$duration", 0] }] }, 0] },
+              {
+                $gt: [
+                  { $ifNull: ["$period", { $ifNull: ["$duration", 0] }] },
+                  0,
+                ],
+              },
               { $ifNull: ["$period", "$duration"] },
-              null
-            ]
+              null,
+            ],
           },
-          rawPercentage: { $ifNull: ["$percentage", { $ifNull: ["$percent", 0] }] },
+          rawPercentage: {
+            $ifNull: ["$percentage", { $ifNull: ["$percent", 0] }],
+          },
         },
       },
       {
@@ -433,7 +447,12 @@ class CustomerService {
           safeTotal: {
             $ifNull: [
               "$totalPrice",
-              { $add: ["$safeInitial", { $multiply: ["$safeMonthly", "$safePeriod"] }] },
+              {
+                $add: [
+                  "$safeInitial",
+                  { $multiply: ["$safeMonthly", "$safePeriod"] },
+                ],
+              },
             ],
           },
         },
@@ -447,13 +466,34 @@ class CustomerService {
         $project: {
           _id: 1,
           productName: 1,
-          originalPrice: { $convert: { input: "$safeOriginal", to: "double", onNull: 0, onError: 0 } },
-          price: { $convert: { input: "$safePrice", to: "double", onNull: 0, onError: 0 } },
+          originalPrice: {
+            $convert: {
+              input: "$safeOriginal",
+              to: "double",
+              onNull: 0,
+              onError: 0,
+            },
+          },
+          price: {
+            $convert: {
+              input: "$safePrice",
+              to: "double",
+              onNull: 0,
+              onError: 0,
+            },
+          },
           totalPrice: "$safeTotal",
           initialPayment: "$safeInitial",
           initialPaymentDueDate: 1,
           monthlyPayment: "$safeMonthly",
-          percentage: { $convert: { input: "$rawPercentage", to: "double", onNull: 0, onError: 0 } },
+          percentage: {
+            $convert: {
+              input: "$rawPercentage",
+              to: "double",
+              onNull: 0,
+              onError: 0,
+            },
+          },
           period: "$safePeriod",
           duration: "$safePeriod",
           startDate: 1,
@@ -498,7 +538,7 @@ class CustomerService {
       });
       if (phoneExists) {
         throw BaseError.BadRequest(
-          `Ushbu telefon raqami bilan mijoz allaqachon mavjud.`
+          `Ushbu telefon raqami bilan mijoz allaqachon mavjud.`,
         );
       }
     }
@@ -508,7 +548,7 @@ class CustomerService {
       });
       if (passportExists) {
         throw BaseError.BadRequest(
-          "Ushbu passport seriyasi bilan mijoz allaqachon mavjud."
+          "Ushbu passport seriyasi bilan mijoz allaqachon mavjud.",
         );
       }
     }
@@ -546,7 +586,7 @@ class CustomerService {
     await auditLogService.logCustomerCreate(
       customer._id.toString(),
       data.fullName,
-      user.sub
+      user.sub,
     );
 
     return { message: "Mijoz yaratildi.", customer };
@@ -603,7 +643,7 @@ class CustomerService {
     if (
       data.birthDate &&
       new Date(data.birthDate).getTime() !==
-      new Date(customer.birthDate).getTime()
+        new Date(customer.birthDate).getTime()
     ) {
       changes.push({
         field: "Tug'ilgan sana",
@@ -619,11 +659,13 @@ class CustomerService {
 
       changes.push({
         field: "Manager",
-        oldValue: oldManager
-          ? `${oldManager.firstName || ""} ${oldManager.lastName || ""}`.trim()
+        oldValue:
+          oldManager ?
+            `${oldManager.firstName || ""} ${oldManager.lastName || ""}`.trim()
           : customer.manager?.toString() || "—",
-        newValue: newManager
-          ? `${newManager.firstName || ""} ${newManager.lastName || ""}`.trim()
+        newValue:
+          newManager ?
+            `${newManager.firstName || ""} ${newManager.lastName || ""}`.trim()
           : data.managerId,
       });
     }
@@ -689,7 +731,7 @@ class CustomerService {
         customer._id.toString(),
         customer.fullName,
         changes,
-        user.sub
+        user.sub,
       );
     }
 
@@ -705,7 +747,7 @@ class CustomerService {
         isActive: true,
         files: customerFiles,
         editHistory,
-      }
+      },
     ).exec();
 
     return {
@@ -745,7 +787,7 @@ class CustomerService {
       {
         isDeleted: false,
       },
-      { new: true }
+      { new: true },
     ).exec();
     if (!customer) {
       throw BaseError.NotFoundError("Mijoz topilmadi.");
@@ -794,7 +836,7 @@ class CustomerService {
   async sellerCreate(
     data: SellerCreateCustomerDto,
     user: IJwtUser,
-    files?: any
+    files?: any,
   ) {
     const createBy = await Employee.findById(user.sub);
     if (!createBy) {
@@ -806,7 +848,7 @@ class CustomerService {
       });
       if (phoneExists) {
         throw BaseError.BadRequest(
-          `Ushbu telefon raqami bilan mijoz allaqachon mavjud.`
+          `Ushbu telefon raqami bilan mijoz allaqachon mavjud.`,
         );
       }
     }
@@ -816,7 +858,7 @@ class CustomerService {
       });
       if (passportExists) {
         throw BaseError.BadRequest(
-          "Ushbu passport seriyasi bilan mijoz allaqachon mavjud."
+          "Ushbu passport seriyasi bilan mijoz allaqachon mavjud.",
         );
       }
     }
@@ -849,6 +891,95 @@ class CustomerService {
     });
     await customer.save();
     return { message: "Mijoz yaratildi.", customer };
+  }
+
+  async hardDeleteCustomer(customerId: string, user: IJwtUser) {
+    try {
+      logger.debug("🔥 === CUSTOMER HARD DELETE STARTED ===");
+      logger.debug(`Customer ID: ${customerId}`);
+
+      // 1. Find customer (including soft deleted ones)
+      const customer = await Customer.findById(customerId);
+      if (!customer) {
+        throw BaseError.NotFoundError("Mijoz topilmadi");
+      }
+
+      // 2. Check user role - only Admin and Moderator can hard delete
+      const employee = await Employee.findById(user.sub).populate("role");
+      const roleName = (employee?.role as any)?.name;
+      const canHardDelete = roleName === "admin" || roleName === "moderator";
+
+      logger.debug(
+        `👤 User role: ${roleName}, canHardDelete: ${canHardDelete}`,
+      );
+
+      if (!canHardDelete) {
+        throw BaseError.ForbiddenError(
+          "Butunlay o'chirish uchun Admin yoki Moderator huquqi kerak!",
+        );
+      }
+
+      // 3. Find all contracts of this customer and delete cascade
+      const contracts = await Contract.find({ customer: customerId });
+      for (const contract of contracts) {
+        await Payment.deleteMany({ contract: contract._id });
+        await Debtor.deleteMany({ contract: contract._id });
+        if (contract.notes) {
+          await Notes.findByIdAndDelete(contract.notes);
+        }
+        await Contract.findByIdAndDelete(contract._id);
+      }
+
+      // 4. Delete customer files from disk
+      const { deleteFile } =
+        await import("../../middlewares/upload.middleware");
+      if (customer.files) {
+        if (customer.files.passport) deleteFile(customer.files.passport);
+        if (customer.files.shartnoma) deleteFile(customer.files.shartnoma);
+        if (customer.files.photo) deleteFile(customer.files.photo);
+      }
+
+      // 5. Delete customer auth record
+      if (customer.auth) {
+        await Auth.findByIdAndDelete(customer.auth);
+      }
+
+      // 6. Delete customer itself
+      await Customer.findByIdAndDelete(customerId);
+
+      logger.debug("✅ === CUSTOMER HARD DELETE COMPLETED ===");
+
+      return {
+        message: `${customer.fullName} mijozi butunlay o'chirildi`,
+        customerId,
+        deletedBy: user.sub,
+        deletedRole: roleName,
+        deletedContractsCount: contracts.length,
+      };
+    } catch (error) {
+      logger.error("❌ === CUSTOMER HARD DELETE FAILED ===");
+      throw error;
+    }
+  }
+
+  async bulkHardDeleteCustomers(customerIds: string[], user: IJwtUser) {
+    const results: { id: string; success: boolean; message: string }[] = [];
+    const errors: { id: string; success: boolean; message: string }[] = [];
+
+    for (const id of customerIds) {
+      try {
+        const result = await this.hardDeleteCustomer(id, user);
+        results.push({ id, success: true, message: result.message });
+      } catch (err: any) {
+        errors.push({ id, success: false, message: err.message });
+      }
+    }
+
+    return {
+      message: `${results.length} ta mijoz o'chirildi`,
+      results,
+      errors,
+    };
   }
 }
 

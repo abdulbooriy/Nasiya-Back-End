@@ -47,23 +47,26 @@ export const checkPermission = (requiredPermission: string) => {
       // const userPermissions =
       //   (user.permissions as any)?.map((p: any) => p.name) || [];
       // Role permissions - agar role.permissions string[] bo'lsa:
-      const rolePermissions: string[] = Array.isArray(user.role?.permissions)
-        ? user.role!.permissions.map((p: any) =>
-          typeof p === "string" ? p : p.name
-        )
+      const rolePermissions: string[] =
+        Array.isArray(user.role?.permissions) ?
+          user.role!.permissions.map((p: any) =>
+            typeof p === "string" ? p : p.name,
+          )
         : [];
 
       // User permissions - bu ham string[] bo'lishi kerak:
-      const userPermissions: string[] = Array.isArray(user.permissions)
-        ? user.permissions.map((p) => p)
-        : [];
+      const userPermissions: string[] =
+        Array.isArray(user.permissions) ? user.permissions.map((p) => p) : [];
 
       const allPermissions = new Set([...rolePermissions, ...userPermissions]);
 
       logger.debug("📋 Role permissions:", rolePermissions);
       logger.debug("📋 User permissions:", userPermissions);
       logger.debug("📋 All permissions:", Array.from(allPermissions));
-      logger.debug("❓ Has required permission:", allPermissions.has(requiredPermission));
+      logger.debug(
+        "❓ Has required permission:",
+        allPermissions.has(requiredPermission),
+      );
 
       if (!allPermissions.has(requiredPermission)) {
         logger.debug("❌ Permission denied");

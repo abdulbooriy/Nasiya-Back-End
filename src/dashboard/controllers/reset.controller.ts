@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import resetService from "../services/reset.service";
 import logger from "../../utils/logger";
+import auditLogService from "../../services/audit-log.service";
 
 class ResetController {
   /**
@@ -29,6 +30,8 @@ class ResetController {
 
       // Reset qilish
       const result = await resetService.resetAllData();
+
+      await auditLogService.logResetAll(user.sub, req.ip);
 
       return res.status(200).json(result);
     } catch (error: any) {

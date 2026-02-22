@@ -117,7 +117,8 @@ class CustomerController {
   async delete(req: Request, res: Response, next: NextFunction) {
     try {
       const id = req.params.id;
-      const data = await customerService.delete(id);
+      const user = req.user;
+      const data = await customerService.delete(id, user);
       res.json(data);
     } catch (error) {
       return next(error);

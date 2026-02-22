@@ -1,6 +1,7 @@
-import AuditLog, { AuditAction, AuditEntity, IAuditLog, IAuditMetadata } from "../schemas/audit-log.schema";
-import logger from "../utils/logger";
 import { Types } from "mongoose";
+
+import AuditLog, { AuditAction, AuditEntity, IAuditMetadata } from "../schemas/audit-log.schema";
+import logger from "../utils/logger";
 
 class AuditLogService {
   /**
@@ -444,6 +445,118 @@ class AuditLogService {
             entityId: userId,
             entityName: employeeName || "Unknown Employee",
           },
+        ],
+      },
+    });
+  }
+
+  /**
+   * Xodim yaratish audit log
+   */
+  async logEmployeeCreate(
+    employeeId: string,
+    employeeName: string,
+    role: string,
+    userId: string
+  ): Promise<void> {
+    await this.createLog({
+      action: AuditAction.CREATE,
+      entity: AuditEntity.EMPLOYEE,
+      entityId: employeeId,
+      userId,
+      metadata: {
+        employeeName,
+        employeeRole: role,
+        affectedEntities: [
+          { entityType: "employee", entityId: employeeId, entityName: employeeName },
+        ],
+      },
+    });
+  }
+
+  /**
+   * Xodim tahrirlash audit log
+   */
+  async logEmployeeUpdate(
+    employeeId: string,
+    employeeName: string,
+    role: string,
+    changes: { field: string; oldValue: any; newValue: any }[],
+    userId: string
+  ): Promise<void> {
+    await this.createLog({
+      action: AuditAction.UPDATE,
+      entity: AuditEntity.EMPLOYEE,
+      entityId: employeeId,
+      userId,
+      changes,
+      metadata: {
+        employeeName,
+        employeeRole: role,
+        affectedEntities: [
+          { entityType: "employee", entityId: employeeId, entityName: employeeName },
+        ],
+      },
+    });
+  }
+
+  /**
+   * Xodim o'chirish audit log
+   */
+  async logEmployeeDelete(
+    employeeId: string,
+    employeeName: string,
+    role: string,
+    userId: string
+  ): Promise<void> {
+    await this.createLog({
+      action: AuditAction.DELETE,
+      entity: AuditEntity.EMPLOYEE,
+      entityId: employeeId,
+      userId,
+      metadata: {
+        employeeName,
+        employeeRole: role,
+        affectedEntities: [
+          { entityType: "employee", entityId: employeeId, entityName: employeeName },
+        ],
+      },
+    });
+  }
+
+  /**
+   * Mijoz o'chirish audit log
+   */
+  async logCustomerDelete(
+    customerId: string,
+    customerName: string,
+    userId: string
+  ): Promise<void> {
+    await this.createLog({
+      action: AuditAction.DELETE,
+      entity: AuditEntity.CUSTOMER,
+      entityId: customerId,
+      userId,
+      metadata: {
+        affectedEntities: [
+          { entityType: "customer", entityId: customerId, entityName: customerName },
+        ],
+      },
+    });
+  }
+
+  /**
+   * Reset operatsiyasi audit log
+   */
+  async logResetAll(userId: string, ipAddress?: string): Promise<void> {
+    await this.createLog({
+      action: AuditAction.DELETE,
+      entity: AuditEntity.BALANCE,
+      userId,
+      ipAddress,
+      metadata: {
+        affectedEntities: [
+          { entityType: "system", entityId: "reset", entityName: "Barcha ma'lumotlar tozalandi (RESET)" },
         ],
       },
     });

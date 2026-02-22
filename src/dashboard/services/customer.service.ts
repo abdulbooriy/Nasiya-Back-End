@@ -1,3 +1,5 @@
+import { Types } from "mongoose";
+
 import BaseError from "../../utils/base.error";
 import Auth from "../../schemas/auth.schema";
 import Customer, { ICustomer } from "../../schemas/customer.schema";
@@ -15,7 +17,6 @@ import Contract from "../../schemas/contract.schema";
 import Payment from "../../schemas/payment.schema";
 import { Debtor } from "../../schemas/debtor.schema";
 import Notes from "../../schemas/notes.schema";
-import { Types } from "mongoose";
 
 class CustomerService {
   async getAllCustomer() {
@@ -756,7 +757,7 @@ class CustomerService {
     };
   }
 
-  async delete(id: string) {
+  async delete(id: string, user?: IJwtUser) {
     const customer = await Customer.findById(id);
     if (!customer) {
       throw BaseError.NotFoundError("Mijoz topilmadi.");
@@ -777,6 +778,10 @@ class CustomerService {
 
     customer.isDeleted = true;
     await customer.save();
+
+    if (user?.sub) {
+      await auditLogService.logCustomerDelete(id, customer.fullName, user.sub);
+    }
 
     return { message: "Mijoz o'chirildi." };
   }

@@ -5,6 +5,7 @@ import Employee from "../../schemas/employee.schema";
 import IJwtUser from "../../types/user";
 import jwt from "../../utils/jwt";
 import IEmployeeData from "../../types/employeeData";
+import auditLogService from "../../services/audit-log.service";
 
 class AuthService {
   async login(data: LoginDto) {
@@ -21,7 +22,7 @@ class AuthService {
 
     const isMatched = await bcrypt.compare(
       data.password,
-      authEmployee.password || ""
+      authEmployee.password || "",
     );
 
     if (!isMatched) {
@@ -43,6 +44,12 @@ class AuthService {
       role: employee.role.name,
     };
     const token = jwt.sign(employeeDto);
+
+    await auditLogService.logLogin(
+      employee.id.toString(),
+      `${employee.firstName} ${employee.lastName}`,
+    );
+
     return { profile: employeeData, ...token };
   }
 

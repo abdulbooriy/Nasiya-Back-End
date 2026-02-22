@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+
 import employeeService from "../services/employee.service";
 import { plainToInstance } from "class-transformer";
 import { validate } from "class-validator";
@@ -47,7 +48,7 @@ class EmployeeController {
       if (errors.length > 0) {
         const formattedErrors = handleValidationErrors(errors);
         return next(
-          BaseError.BadRequest("Xodim malumotlari xato.", formattedErrors)
+          BaseError.BadRequest("Xodim malumotlari xato.", formattedErrors),
         );
       }
       const data = await employeeService.create(employeeData, user);
@@ -59,15 +60,16 @@ class EmployeeController {
 
   async update(req: Request, res: Response, next: NextFunction) {
     try {
+      const user = req.user;
       const employeeData = plainToInstance(UpdateEmployeeDto, req.body || {});
       const errors = await validate(employeeData);
       if (errors.length > 0) {
         const formattedErrors = handleValidationErrors(errors);
         return next(
-          BaseError.BadRequest("Xodim malumotlari xato.", formattedErrors)
+          BaseError.BadRequest("Xodim malumotlari xato.", formattedErrors),
         );
       }
-      const data = await employeeService.update(employeeData);
+      const data = await employeeService.update(employeeData, user);
       res.status(200).json(data);
     } catch (error) {
       return next(error);
@@ -81,7 +83,7 @@ class EmployeeController {
       if (errors.length > 0) {
         const formattedErrors = handleValidationErrors(errors);
         return next(
-          BaseError.BadRequest("Yechish malumotlari xato.", formattedErrors)
+          BaseError.BadRequest("Yechish malumotlari xato.", formattedErrors),
         );
       }
       const data = await employeeService.withdrawFromBalance(withdraw, user);
@@ -94,7 +96,8 @@ class EmployeeController {
   async delete(req: Request, res: Response, next: NextFunction) {
     try {
       const id = req.params.id;
-      const data = await employeeService.delete(id);
+      const user = req.user;
+      const data = await employeeService.delete(id, user);
       res.json(data);
     } catch (error) {
       return next(error);

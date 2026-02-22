@@ -1,5 +1,6 @@
+import mongoose from "mongoose";
+
 import BaseError from "../../utils/base.error";
-import mongoose, { Types } from "mongoose";
 import Employee from "../../schemas/employee.schema";
 import logger from "../../utils/logger";
 import {
@@ -108,7 +109,7 @@ class EmployeeService {
               $round: {
                 $multiply: [
                   { $ifNull: ["$balance.dollar", 0] },
-                  "$exchangeRate"
+                  "$exchangeRate",
                 ],
               },
             },
@@ -132,9 +133,9 @@ class EmployeeService {
         isDeleted: false,
         isActive: true,
       },
-      "_id firstName lastName"
-    ).populate('role', 'name');
-    
+      "_id firstName lastName",
+    ).populate("role", "name");
+
     // Frontend uchun fullName qo'shamiz
     return employees.map((emp) => ({
       _id: emp._id,
@@ -182,12 +183,20 @@ class EmployeeService {
 
     await employee.save();
 
+    await auditLogService.logEmployeeCreate(
+      employee._id.toString(),
+      `${data.firstName} ${data.lastName}`,
+      data.role,
+      user.sub,
+    );
+
     return { message: "Xodim qo'shildi." };
   }
 
-  async update(data: UpdateEmployeeDto) {
+  async update(data: UpdateEmployeeDto, user?: IJwtUser) {
     const employeeExist = await Employee.findById(data.id)
       .populate("auth")
+      .populate("role")
       .exec();
 
     if (!employeeExist) {
@@ -199,7 +208,7 @@ class EmployeeService {
       employeeExist.role.name === RoleEnum.ADMIN
     ) {
       throw BaseError.BadRequest(
-        "Admin foydalanuvchini yangilash taqiqlangan."
+        "Admin foydalanuvchini yangilash taqiqlangan.",
       );
     }
 
@@ -207,6 +216,32 @@ class EmployeeService {
     if (!role) {
       throw BaseError.BadRequest(`Role '${data.role}' not found!`);
     }
+
+    const changes: { field: string; oldValue: any; newValue: any }[] = [];
+    if (employeeExist.firstName !== data.firstName)
+      changes.push({
+        field: "firstName",
+        oldValue: employeeExist.firstName,
+        newValue: data.firstName,
+      });
+    if (employeeExist.lastName !== data.lastName)
+      changes.push({
+        field: "lastName",
+        oldValue: employeeExist.lastName,
+        newValue: data.lastName,
+      });
+    if (employeeExist.phoneNumber !== data.phoneNumber)
+      changes.push({
+        field: "phoneNumber",
+        oldValue: employeeExist.phoneNumber,
+        newValue: data.phoneNumber,
+      });
+    if (employeeExist.role?.name !== data.role)
+      changes.push({
+        field: "role",
+        oldValue: employeeExist.role?.name,
+        newValue: data.role,
+      });
 
     await Employee.findByIdAndUpdate(
       data.id,
@@ -218,7 +253,7 @@ class EmployeeService {
         permissions: data.permissions,
         isActive: data.isActive,
       },
-      { new: true }
+      { new: true },
     ).exec();
 
     if (data.password) {
@@ -238,10 +273,20 @@ class EmployeeService {
       }
     }
 
+    if (user?.sub) {
+      await auditLogService.logEmployeeUpdate(
+        data.id,
+        `${data.firstName} ${data.lastName}`,
+        data.role,
+        changes,
+        user.sub,
+      );
+    }
+
     return { message: "Xodim ma'lumotlari yangilandi." };
   }
 
-  async delete(id: string) {
+  async delete(id: string, user?: IJwtUser) {
     // ⚠️ DEVELOPMENT: Transaction disabled for standalone MongoDB
     // const session = await mongoose.startSession();
     // session.startTransaction();
@@ -255,12 +300,16 @@ class EmployeeService {
 
       if (employee.role && employee.role.name === RoleEnum.ADMIN) {
         throw BaseError.BadRequest(
-          "Admin foydalanuvchini o'chirish taqiqlangan."
+          "Admin foydalanuvchini o'chirish taqiqlangan.",
         );
       }
 
+      const employeeName = `${employee.firstName} ${employee.lastName}`;
+      const employeeRole = employee.role?.name || "unknown";
+
       // ✅ CASCADE: Employee o'chirilganda bog'liq ma'lumotlarni boshqarish
-      const { cascadeDeleteEmployee } = await import("../../middlewares/cascade.middleware");
+      const { cascadeDeleteEmployee } =
+        await import("../../middlewares/cascade.middleware");
       await cascadeDeleteEmployee(id, undefined); // session = undefined for dev mode
 
       // Auth'ni o'chirish
@@ -272,7 +321,13 @@ class EmployeeService {
       await Employee.findByIdAndDelete(id);
 
       // await session.commitTransaction();
-      logger.debug("✅ Employee va bog'liq ma'lumotlar o'chirildi (NO TRANSACTION - DEV MODE)");
+      logger.debug(
+        "✅ Employee va bog'liq ma'lumotlar o'chirildi (NO TRANSACTION - DEV MODE)",
+      );
+
+      if (user?.sub) {
+        await auditLogService.logEmployeeDelete(id, employeeName, employeeRole, user.sub);
+      }
 
       return { message: "Xodim o'chirildi." };
     } catch (error) {
@@ -303,7 +358,7 @@ class EmployeeService {
       logger.debug(
         "✅ Employee found:",
         employeeExist.firstName,
-        employeeExist.lastName
+        employeeExist.lastName,
       );
 
       const balance = await Balance.findOne({ managerId: employeeExist._id });
@@ -323,23 +378,23 @@ class EmployeeService {
       const Currency = await import("../../schemas/currency.schema");
       const currency = await Currency.default.findOne().sort({ createdAt: -1 });
       const exchangeRate = currency?.amount || 12500;
-      
+
       const sumInDollars = changes.sum ? changes.sum / exchangeRate : 0;
       const totalDollarsToWithdraw = (changes.dollar || 0) + sumInDollars;
-      
+
       logger.debug("💵 Withdrawal calculation:", {
         requestedDollar: changes.dollar || 0,
         requestedSum: changes.sum || 0,
         exchangeRate: exchangeRate,
         sumInDollars: sumInDollars,
-        totalDollarsToWithdraw: totalDollarsToWithdraw
+        totalDollarsToWithdraw: totalDollarsToWithdraw,
       });
 
       // Faqat dollar balansni tekshirish
       if (balance.dollar < totalDollarsToWithdraw) {
         logger.error("❌ Insufficient dollar balance");
         throw BaseError.BadRequest(
-          `Balansda yetarli dollar yo'q. Mavjud: ${balance.dollar}$, Kerak: ${totalDollarsToWithdraw.toFixed(2)}$ (${changes.dollar || 0}$ + ${changes.sum || 0} so'm)`
+          `Balansda yetarli dollar yo'q. Mavjud: ${balance.dollar}$, Kerak: ${totalDollarsToWithdraw.toFixed(2)}$ (${changes.dollar || 0}$ + ${changes.sum || 0} so'm)`,
         );
       }
 
@@ -351,7 +406,9 @@ class EmployeeService {
         dollar: totalDollarsToWithdraw,
         sum: 0, // Database'da faqat dollarda saqlaymiz
         isActive: true,
-        notes: data.notes || `Balansdan pul yechib olindi: ${changes.dollar || 0}$ + ${changes.sum || 0} so'm = ${totalDollarsToWithdraw.toFixed(2)}$`,
+        notes:
+          data.notes ||
+          `Balansdan pul yechib olindi: ${changes.dollar || 0}$ + ${changes.sum || 0} so'm = ${totalDollarsToWithdraw.toFixed(2)}$`,
       });
 
       logger.debug("✅ Expense created:", expense._id);
@@ -377,7 +434,7 @@ class EmployeeService {
           totalDollarsToWithdraw,
           0,
           data.notes || "Balansdan pul yechib olindi",
-          user.sub // Kim yechib olganini ko'rsatamiz
+          user.sub, // Kim yechib olganini ko'rsatamiz
         );
       }
 

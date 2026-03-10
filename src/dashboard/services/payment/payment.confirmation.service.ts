@@ -186,6 +186,84 @@ export class PaymentConfirmationService extends PaymentBaseService {
 
       await contract.save();
 
+      // ✅ YANGI: INITIAL to'lov tasdiqlanganida — oylik to'lovlar qayta hisoblanadi
+      if (payment.paymentType === PaymentType.INITIAL) {
+        const confirmedInitialAmount = payment.actualAmount || payment.amount;
+
+        if (contract.period > 0 && contract.price > 0) {
+          // ✅ TO'G'RI FORMULA: price (foizsiz) va percentage dan hisoblash
+          // monthlyPayment = (price - initialPayment) * (1 + percentage/100) / period
+          const remainingAfterInitial = contract.price - confirmedInitialAmount;
+          const percentage = contract.percentage ?? 0;
+          const amountWithInterest =
+            remainingAfterInitial * (1 + percentage / 100);
+          const newMonthlyPayment = Math.round(
+            amountWithInterest / contract.period,
+          );
+          const newTotalPrice = Math.round(
+            confirmedInitialAmount + newMonthlyPayment * contract.period,
+          );
+
+          if (
+            newMonthlyPayment > 0 &&
+            Math.abs(newMonthlyPayment - contract.monthlyPayment) > 0.01
+          ) {
+            logger.debug(
+              `🔄 INITIAL to'lov tasdiqlandi — oylik to'lov qayta hisoblanmoqda:`,
+              {
+                price: contract.price,
+                percentage,
+                confirmedInitialAmount,
+                remainingAfterInitial,
+                amountWithInterest,
+                period: contract.period,
+                oldMonthlyPayment: contract.monthlyPayment,
+                newMonthlyPayment,
+                oldTotalPrice: contract.totalPrice,
+                newTotalPrice,
+              },
+            );
+
+            // Shartnomani yangilash
+            contract.initialPayment = confirmedInitialAmount;
+            contract.monthlyPayment = newMonthlyPayment;
+            contract.totalPrice = newTotalPrice;
+            await contract.save();
+
+            // Barcha to'lanmagan SCHEDULED oylik to'lovlarni yangilash
+            const unpaidMonthlyIds = (contract.payments as any[])
+              .filter(
+                (p) =>
+                  !p.isPaid &&
+                  p.status === PaymentStatus.SCHEDULED &&
+                  p.paymentType === PaymentType.MONTHLY,
+              )
+              .map((p) => p._id);
+
+            if (unpaidMonthlyIds.length > 0) {
+              const updateResult = await Payment.updateMany(
+                { _id: { $in: unpaidMonthlyIds } },
+                {
+                  $set: {
+                    amount: newMonthlyPayment,
+                    expectedAmount: newMonthlyPayment,
+                    remainingAmount: newMonthlyPayment,
+                  },
+                },
+              );
+
+              logger.debug(
+                `✅ ${updateResult.modifiedCount} ta oylik to'lov yangilandi → ${newMonthlyPayment} $`,
+              );
+            }
+          } else {
+            logger.debug(
+              `ℹ️ Oylik to'lov o'zgarmadi (diff: ${Math.abs(newMonthlyPayment - contract.monthlyPayment).toFixed(2)})`,
+            );
+          }
+        }
+      }
+
       // ✅ TUZATISH: nextPaymentDate ni to'g'ri hisoblash
       // Eng oxirgi to'langan oydan keyingi oyga o'rnatish
       if (payment.paymentType === PaymentType.MONTHLY) {
@@ -326,6 +404,12 @@ export class PaymentConfirmationService extends PaymentBaseService {
           sum: 0,
         },
         session,
+        user.sub,
+        {
+          customerName,
+          contractId: contract.customId,
+          paymentType: payment.paymentType,
+        },
       );
 
       logger.debug(

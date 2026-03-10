@@ -590,6 +590,79 @@ class AuditLogService {
   }
 
   /**
+   * Mijozni tiklash (restoration) audit log
+   */
+  async logCustomerRestoration(
+    customerId: string,
+    customerName: string,
+    userId: string
+  ): Promise<void> {
+    await this.createLog({
+      action: AuditAction.STATUS_CHANGE,
+      entity: AuditEntity.CUSTOMER,
+      entityId: customerId,
+      userId,
+      metadata: {
+        affectedEntities: [
+          { entityType: "customer", entityId: customerId, entityName: customerName },
+        ],
+      },
+    });
+  }
+
+  /**
+   * Balans o'zgarishi audit log
+   */
+  async logBalanceUpdate(
+    managerId: string,
+    managerName: string,
+    dollar: number,
+    sum: number,
+    userId: string,
+    metadata?: { customerName?: string; contractId?: string; paymentType?: string }
+  ): Promise<void> {
+    await this.createLog({
+      action: AuditAction.UPDATE,
+      entity: AuditEntity.BALANCE,
+      entityId: managerId,
+      userId,
+      metadata: {
+        dollar,
+        sum,
+        managerName,
+        ...metadata,
+        affectedEntities: [
+          { entityType: "employee", entityId: managerId, entityName: managerName },
+        ],
+      },
+    });
+  }
+
+  /**
+   * Qarzdor yaratish audit log (manual declare)
+   */
+  async logDebtorDeclare(
+    contractId: string,
+    customerName: string,
+    debtAmount: number,
+    userId: string
+  ): Promise<void> {
+    await this.createLog({
+      action: AuditAction.CREATE,
+      entity: AuditEntity.DEBTOR,
+      entityId: contractId,
+      userId,
+      metadata: {
+        amount: debtAmount,
+        customerName,
+        affectedEntities: [
+          { entityType: "debtor", entityId: contractId, entityName: `${customerName} - $${debtAmount}` },
+        ],
+      },
+    });
+  }
+
+  /**
    * Kunlik aktiv faoliyat olish (optimized with limit)
    * 
    * @param date - Allaqachon UTC formatda kelgan sana (controller'dan parseUzbekistanDate orqali)
@@ -605,12 +678,13 @@ class AuditLogService {
       search?: string;
       minAmount?: number;
       maxAmount?: number;
-    }
-  ) {
+    },
+    skip: number = 0
+  ): Promise<{ activities: any[]; total: number }> {
     // ✅ Query obyektini yaratish
     const query: any = {};
 
-    // Single date
+    // Sana filtri — faqat dateParam berilganda qo'llaniladi
     if (date) {
       const { getUzbekistanDayEnd } = require('../utils/helpers/date.helper');
 
@@ -627,6 +701,7 @@ class AuditLogService {
         $lte: endOfDay,
       };
     }
+    // date berilmasa — hech qanday sana filtri yo'q, barcha yozuvlar qaytariladi
 
     // ✅ Filterlarni qo'shish
     if (filters) {
@@ -671,20 +746,25 @@ class AuditLogService {
       }
     }
 
-    const activities = await AuditLog.find(query)
-      .select('-userAgent -ipAddress') // Keraksiz fieldlarni o'chirish
-      .populate("userId", "firstName lastName role")
-      .sort({ timestamp: -1 })
-      .limit(limit)
-      .lean();
+    // ✅ Parallel: activities + total count
+    const [activities, total] = await Promise.all([
+      AuditLog.find(query)
+        .select('-userAgent -ipAddress')
+        .populate("userId", "firstName lastName role")
+        .sort({ timestamp: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      AuditLog.countDocuments(query),
+    ]);
 
-    // ✅ YANGI: contractId ni metadata dan chiqarish
+    // ✅ contractId ni metadata dan chiqarish
     const activitiesWithContractId = activities.map((activity: any) => ({
       ...activity,
       contractId: activity.metadata?.contractId || null,
     }));
 
-    return activitiesWithContractId;
+    return { activities: activitiesWithContractId, total };
   }
 
   /**

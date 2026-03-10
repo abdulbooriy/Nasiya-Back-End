@@ -326,7 +326,12 @@ class EmployeeService {
       );
 
       if (user?.sub) {
-        await auditLogService.logEmployeeDelete(id, employeeName, employeeRole, user.sub);
+        await auditLogService.logEmployeeDelete(
+          id,
+          employeeName,
+          employeeRole,
+          user.sub,
+        );
       }
 
       return { message: "Xodim o'chirildi." };

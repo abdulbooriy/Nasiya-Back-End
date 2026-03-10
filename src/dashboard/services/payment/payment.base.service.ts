@@ -12,6 +12,7 @@ import PrepaidRecord from "../../../schemas/prepaid-record.schema";
 import logger from "../../../utils/logger";
 import contractQueryService from "../contract/contract.query.service";
 import { PAYMENT_CONSTANTS } from "../../../utils/helpers/payment";
+import auditLogService from "../../../services/audit-log.service";
 
 export class PaymentBaseService {
   /**
@@ -25,11 +26,15 @@ export class PaymentBaseService {
       sum?: number;
     },
     session?: any,
+    userId?: string,
+    metadata?: { customerName?: string; contractId?: string; paymentType?: string },
   ): Promise<any> {
     try {
       let balance = await Balance.findOne({ managerId }).session(
         session || null,
       );
+
+      let managerName = "Noma'lum";
 
       if (!balance) {
         const newBalances = await Balance.create(
@@ -51,6 +56,26 @@ export class PaymentBaseService {
         }
         await balance.save({ session: session || undefined });
         logger.debug("✅ Balance updated:", balance._id);
+      }
+
+      // Audit log (faqat userId bo'lsa)
+      if (userId) {
+        try {
+          const Employee = (await import("../../../schemas/employee.schema")).default;
+          const manager = await Employee.findById(managerId).select("firstName lastName");
+          managerName = manager ? `${manager.firstName} ${manager.lastName}` : "Noma'lum";
+
+          await auditLogService.logBalanceUpdate(
+            managerId,
+            managerName,
+            changes.dollar || 0,
+            changes.sum || 0,
+            userId,
+            metadata,
+          );
+        } catch (auditErr) {
+          logger.error("❌ Balance audit log xatolik:", auditErr);
+        }
       }
 
       return balance;

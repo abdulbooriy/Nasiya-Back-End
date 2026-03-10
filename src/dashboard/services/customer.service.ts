@@ -786,7 +786,7 @@ class CustomerService {
     return { message: "Mijoz o'chirildi." };
   }
 
-  async restoration(id: string) {
+  async restoration(id: string, userId?: string) {
     const customer = await Customer.findByIdAndUpdate(
       id,
       {
@@ -796,6 +796,10 @@ class CustomerService {
     ).exec();
     if (!customer) {
       throw BaseError.NotFoundError("Mijoz topilmadi.");
+    }
+
+    if (userId) {
+      await auditLogService.logCustomerRestoration(id, customer.fullName, userId);
     }
 
     return { message: "Mijoz qayta tiklandi" };

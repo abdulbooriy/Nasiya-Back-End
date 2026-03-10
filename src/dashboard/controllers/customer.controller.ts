@@ -128,7 +128,8 @@ class CustomerController {
   async restoration(req: Request, res: Response, next: NextFunction) {
     try {
       const id = req.params.id;
-      const data = await customerService.restoration(id);
+      const user = req.user as any;
+      const data = await customerService.restoration(id, user?.sub);
       res.json(data);
     } catch (error) {
       return next(error);

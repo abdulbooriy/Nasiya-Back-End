@@ -4,6 +4,8 @@ import IJwtUser from "../../types/user";
 import { Debtor } from "../../schemas/debtor.schema";
 import Payment, { PaymentType } from "../../schemas/payment.schema";
 import logger from "../../utils/logger";
+import auditLogService from "../../services/audit-log.service";
+import Customer from "../../schemas/customer.schema";
 
 interface CategorizedDebts {
   overdue: any[];
@@ -408,7 +410,7 @@ class DebtorService {
    */
   async declareDebtors(user: IJwtUser, contractIds: string[]) {
     try {
-      const contracts = await Contract.find({ _id: { $in: contractIds } });
+      const contracts = await Contract.find({ _id: { $in: contractIds } }).populate("customer");
       let createdCount = 0;
       for (const contract of contracts) {
         contract.isDeclare = true;
@@ -430,6 +432,15 @@ class DebtorService {
             createBy: user.sub,
           });
           createdCount++;
+
+          // Audit log
+          const customerName = (contract.customer as any)?.fullName || "Noma'lum mijoz";
+          await auditLogService.logDebtorDeclare(
+            contract._id.toString(),
+            customerName,
+            contract.monthlyPayment,
+            user.sub
+          );
         }
       }
       return { message: "Qarzdorlar e'lon qilindi.", created: createdCount };

@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+
 import auditLogService from "../../services/audit-log.service";
 import { AuditAction, AuditEntity } from "../../schemas/audit-log.schema";
 import IJwtUser from "../../types/user";
@@ -14,75 +15,94 @@ class AuditLogController {
   async getDailyActivity(req: Request, res: Response, next: NextFunction) {
     try {
       const user = req.user as IJwtUser;
-      
+
       // Faqat admin va moderator ko'ra oladi
       if (!["admin", "moderator"].includes(user.role)) {
-        return next(BaseError.ForbiddenError("Sizda audit log ko'rish huquqi yo'q"));
+        return next(
+          BaseError.ForbiddenError("Sizda audit log ko'rish huquqi yo'q"),
+        );
       }
 
       // Date parametrini parse qilish
       const dateParam = req.query.date as string;
-      
+
       // ✅ TIMEZONE FIX: O'zbekiston vaqt zonasi (UTC+5)
-      const { parseUzbekistanDate, getUzbekistanDayEnd } = await import("../../utils/helpers/date.helper");
-      
-      let selectedDate: Date;
+      const { parseUzbekistanDate, getUzbekistanDayEnd } =
+        await import("../../utils/helpers/date.helper");
+
+      // date berilmasa — undefined (barcha yozuvlar), berilsa — o'sha kun
+      let selectedDate: Date | undefined;
       if (dateParam) {
         selectedDate = parseUzbekistanDate(dateParam);
-        
-        logger.debug('Audit Log Query', {
+
+        logger.debug("Audit Log Query", {
           dateParam,
           startDate: selectedDate.toISOString(),
           endDate: getUzbekistanDayEnd(dateParam).toISOString(),
         });
-      } else {
-        // Default: today
-        selectedDate = new Date();
       }
+      // else: selectedDate = undefined → barcha yozuvlar, sana filtrisiz
 
       // Limit parametri (default: 100, max: 500)
-      const limitParam = req.query.limit ? parseInt(req.query.limit as string) : 100;
-      const limit = Math.min(limitParam, 500); // Max 500 ta yozuv
-      
+      const limitParam =
+        req.query.limit ? parseInt(req.query.limit as string) : 100;
+      const limit = Math.min(limitParam, 500);
+
+      // Pagination
+      const pageParam = req.query.page ? parseInt(req.query.page as string) : 1;
+      const page = Math.max(1, pageParam);
+      const skip = (page - 1) * limit;
+
       // ✅ Filter parametrlari
       const action = req.query.action as string | undefined;
       const entity = req.query.entity as string | undefined;
       const employeeId = req.query.employeeId as string | undefined;
       const search = req.query.search as string | undefined;
-      const minAmount = req.query.minAmount ? parseFloat(req.query.minAmount as string) : undefined;
-      const maxAmount = req.query.maxAmount ? parseFloat(req.query.maxAmount as string) : undefined;
-      
-      logger.debug("Audit Log Filters", { action, entity, employeeId, search, minAmount, maxAmount });
-      
-      const activities = await auditLogService.getDailyActivity(
-        selectedDate, 
+      const minAmount =
+        req.query.minAmount ?
+          parseFloat(req.query.minAmount as string)
+        : undefined;
+      const maxAmount =
+        req.query.maxAmount ?
+          parseFloat(req.query.maxAmount as string)
+        : undefined;
+
+      logger.debug("Audit Log Filters", {
+        dateParam: dateParam || "ALL",
+        action,
+        entity,
+        employeeId,
+        search,
+        minAmount,
+        maxAmount,
+        page,
         limit,
-        {
-          action,
-          entity,
-          employeeId,
-          search,
-          minAmount,
-          maxAmount,
-        }
+      });
+
+      const result = await auditLogService.getDailyActivity(
+        selectedDate,
+        limit,
+        { action, entity, employeeId, search, minAmount, maxAmount },
+        skip,
       );
-      
+
       logger.debug("Audit Log Result", {
-        dateParam,
-        foundLogs: activities.length,
+        dateParam: dateParam || "ALL",
+        foundLogs: result.activities.length,
+        totalInDB: result.total,
+        page,
         filters: { action, entity, employeeId, search, minAmount, maxAmount },
-        firstLog: activities[0]?.timestamp,
-        lastLog: activities[activities.length - 1]?.timestamp,
       });
 
       res.status(200).json({
         status: "success",
-        message: "Kunlik aktivlik muvaffaqiyatli olindi",
+        message: "Aktivlik muvaffaqiyatli olindi",
         data: {
-          date: dayjs(selectedDate).format("YYYY-MM-DD"),
-          activities,
-          total: activities.length,
+          date: dateParam ? dayjs(selectedDate).format("YYYY-MM-DD") : null,
+          activities: result.activities,
+          total: result.total,
           limit,
+          page,
         },
       });
     } catch (error) {
@@ -97,9 +117,11 @@ class AuditLogController {
   async getActivityStats(req: Request, res: Response, next: NextFunction) {
     try {
       const user = req.user as IJwtUser;
-      
+
       if (!["admin", "moderator"].includes(user.role)) {
-        return next(BaseError.ForbiddenError("Sizda audit log ko'rish huquqi yo'q"));
+        return next(
+          BaseError.ForbiddenError("Sizda audit log ko'rish huquqi yo'q"),
+        );
       }
 
       const startParam = req.query.start as string;
@@ -107,7 +129,10 @@ class AuditLogController {
 
       // Default: oxirgi 30 kun
       const endDate = endParam ? new Date(endParam) : new Date();
-      const startDate = startParam ? new Date(startParam) : dayjs().subtract(30, 'day').toDate();
+      const startDate =
+        startParam ?
+          new Date(startParam)
+        : dayjs().subtract(30, "day").toDate();
 
       if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
         return next(BaseError.BadRequest("Noto'g'ri sana formati"));
@@ -138,9 +163,11 @@ class AuditLogController {
   async getEntityHistory(req: Request, res: Response, next: NextFunction) {
     try {
       const user = req.user as IJwtUser;
-      
+
       if (!["admin", "moderator"].includes(user.role)) {
-        return next(BaseError.ForbiddenError("Sizda audit log ko'rish huquqi yo'q"));
+        return next(
+          BaseError.ForbiddenError("Sizda audit log ko'rish huquqi yo'q"),
+        );
       }
 
       const { entityType, entityId } = req.params;
@@ -152,7 +179,7 @@ class AuditLogController {
 
       const history = await auditLogService.getEntityHistory(
         entityType as AuditEntity,
-        entityId
+        entityId,
       );
 
       res.status(200).json({
@@ -177,9 +204,11 @@ class AuditLogController {
   async getUserActivity(req: Request, res: Response, next: NextFunction) {
     try {
       const user = req.user as IJwtUser;
-      
+
       if (!["admin", "moderator"].includes(user.role)) {
-        return next(BaseError.ForbiddenError("Sizda audit log ko'rish huquqi yo'q"));
+        return next(
+          BaseError.ForbiddenError("Sizda audit log ko'rish huquqi yo'q"),
+        );
       }
 
       const { userId } = req.params;
@@ -209,9 +238,11 @@ class AuditLogController {
   async getFilteredActivity(req: Request, res: Response, next: NextFunction) {
     try {
       const user = req.user as IJwtUser;
-      
+
       if (!["admin", "moderator"].includes(user.role)) {
-        return next(BaseError.ForbiddenError("Sizda audit log ko'rish huquqi yo'q"));
+        return next(
+          BaseError.ForbiddenError("Sizda audit log ko'rish huquqi yo'q"),
+        );
       }
 
       const {
@@ -233,29 +264,36 @@ class AuditLogController {
       // Date range
       let startDate: Date | undefined;
       let endDate: Date | undefined;
-      
+
       if (date) {
         // ✅ TIMEZONE FIX: O'zbekiston vaqt zonasi (UTC+5)
-        const { getUzbekistanDayStart, getUzbekistanDayEnd } = await import("../../utils/helpers/date.helper");
+        const { getUzbekistanDayStart, getUzbekistanDayEnd } =
+          await import("../../utils/helpers/date.helper");
         startDate = getUzbekistanDayStart(date);
         endDate = getUzbekistanDayEnd(date);
       }
 
       // Query building
       const query: any = {};
-      
+
       if (startDate && endDate) {
         query.timestamp = { $gte: startDate, $lte: endDate };
       }
-      
-      if (entity && Object.values(AuditEntity).includes(entity as AuditEntity)) {
+
+      if (
+        entity &&
+        Object.values(AuditEntity).includes(entity as AuditEntity)
+      ) {
         query.entity = entity;
       }
-      
-      if (action && Object.values(AuditAction).includes(action as AuditAction)) {
+
+      if (
+        action &&
+        Object.values(AuditAction).includes(action as AuditAction)
+      ) {
         query.action = action;
       }
-      
+
       if (userId) {
         query.userId = userId;
       }
@@ -267,7 +305,7 @@ class AuditLogController {
 
       // Ma'lumotlarni olish
       const AuditLog = (await import("../../schemas/audit-log.schema")).default;
-      
+
       const [activities, total] = await Promise.all([
         AuditLog.find(query)
           .populate("userId", "firstName lastName role")
@@ -310,40 +348,55 @@ class AuditLogController {
   async getTodaySummary(req: Request, res: Response, next: NextFunction) {
     try {
       const user = req.user as IJwtUser;
-      
+
       if (!["admin", "moderator"].includes(user.role)) {
-        return next(BaseError.ForbiddenError("Sizda audit log ko'rish huquqi yo'q"));
+        return next(
+          BaseError.ForbiddenError("Sizda audit log ko'rish huquqi yo'q"),
+        );
       }
 
       const today = new Date();
-      const activities = await auditLogService.getDailyActivity(today, 50); // Faqat 50 ta
-
-      // ✅ YANGI: contractId ni metadata dan chiqarish
-      const activitiesWithContractId = activities.map((activity: any) => ({
-        ...activity,
-        contractId: activity.metadata?.contractId || null,
-      }));
+      const result = await auditLogService.getDailyActivity(today, 50);
+      const activitiesWithContractId = result.activities;
 
       // Summary statistics
       const summary = {
         totalActivities: activitiesWithContractId.length,
         customers: {
-          created: activitiesWithContractId.filter(a => a.action === "CREATE" && a.entity === "customer").length,
-          updated: activitiesWithContractId.filter(a => a.action === "UPDATE" && a.entity === "customer").length,
+          created: activitiesWithContractId.filter(
+            (a) => a.action === "CREATE" && a.entity === "customer",
+          ).length,
+          updated: activitiesWithContractId.filter(
+            (a) => a.action === "UPDATE" && a.entity === "customer",
+          ).length,
         },
         contracts: {
-          created: activitiesWithContractId.filter(a => a.action === "CREATE" && a.entity === "contract").length,
-          updated: activitiesWithContractId.filter(a => a.action === "UPDATE" && a.entity === "contract").length,
+          created: activitiesWithContractId.filter(
+            (a) => a.action === "CREATE" && a.entity === "contract",
+          ).length,
+          updated: activitiesWithContractId.filter(
+            (a) => a.action === "UPDATE" && a.entity === "contract",
+          ).length,
         },
         payments: {
-          total: activitiesWithContractId.filter(a => a.action === "PAYMENT" && a.entity === "payment").length,
-          confirmed: activitiesWithContractId.filter(a => a.action === "CONFIRM" && a.entity === "payment").length,
-          rejected: activitiesWithContractId.filter(a => a.action === "REJECT" && a.entity === "payment").length,
+          total: activitiesWithContractId.filter(
+            (a) => a.action === "PAYMENT" && a.entity === "payment",
+          ).length,
+          confirmed: activitiesWithContractId.filter(
+            (a) => a.action === "CONFIRM" && a.entity === "payment",
+          ).length,
+          rejected: activitiesWithContractId.filter(
+            (a) => a.action === "REJECT" && a.entity === "payment",
+          ).length,
         },
-        excel_imports: activitiesWithContractId.filter(a => a.action === "BULK_IMPORT" && a.entity === "excel_import").length,
+        excel_imports: activitiesWithContractId.filter(
+          (a) => a.action === "BULK_IMPORT" && a.entity === "excel_import",
+        ).length,
         users: {
-          active: [...new Set(activitiesWithContractId.map(a => a.userId))].length,
-          logins: activitiesWithContractId.filter(a => a.action === "LOGIN").length,
+          active: [...new Set(activitiesWithContractId.map((a) => a.userId))]
+            .length,
+          logins: activitiesWithContractId.filter((a) => a.action === "LOGIN")
+            .length,
         },
       };
 
@@ -353,7 +406,7 @@ class AuditLogController {
         data: {
           date: dayjs(today).format("YYYY-MM-DD"),
           summary,
-          recentActivities: activitiesWithContractId.slice(0, 10), // So'nggi 10 ta
+          recentActivities: activitiesWithContractId.slice(0, 10),
         },
       });
     } catch (error) {

@@ -1,6 +1,6 @@
 /**
  * Contract Edit Handler - Handles all contract editing and update logic
- * 
+ *
  * This is the most complex module handling:
  * - Contract validation
  * - Impact analysis
@@ -12,8 +12,11 @@
  */
 
 import { Types } from "mongoose";
-import Contract, { ContractStatus } from "../../../schemas/contract.schema";
+
 import logger from "../../../utils/logger";
+import BaseError from "../../../utils/base.error";
+
+import Contract, { ContractStatus } from "../../../schemas/contract.schema";
 import Payment, {
   PaymentStatus,
   PaymentType,
@@ -22,17 +25,15 @@ import Payment, {
 import Notes from "../../../schemas/notes.schema";
 import Customer from "../../../schemas/customer.schema";
 import { Debtor } from "../../../schemas/debtor.schema";
-import Employee from "../../../schemas/employee.schema";
-import BaseError from "../../../utils/base.error";
+
 import IJwtUser from "../../../types/user";
 import { UpdateContractDto } from "../../../validators/contract";
 import {
   verifyContractEditPermission,
   validateContractEditInput,
-  createAuditLog,
   checkRateLimit,
-  sanitizeContractForLogging,
 } from "../contract.service.security";
+import auditLogService from "../../../services/audit-log.service";
 
 export class ContractEditHandler {
   /**
@@ -93,7 +94,7 @@ export class ContractEditHandler {
       oldValue: any;
       newValue: any;
       difference: number;
-    }>
+    }>,
   ): Promise<void> {
     logger.debug("🔍 Validating contract edit...");
 
@@ -101,7 +102,7 @@ export class ContractEditHandler {
       // 1. Manfiy qiymatlarni tekshirish
       if (change.newValue < 0) {
         throw BaseError.BadRequest(
-          `${change.field} manfiy bo'lishi mumkin emas`
+          `${change.field} manfiy bo'lishi mumkin emas`,
         );
       }
 
@@ -109,19 +110,19 @@ export class ContractEditHandler {
       if (change.field === "monthlyPayment") {
         if (change.oldValue > 0 && change.newValue > 0) {
           const changePercent = Math.abs(
-            (change.difference / change.oldValue) * 100
+            (change.difference / change.oldValue) * 100,
           );
 
           logger.debug(
             "📊 Monthly Payment Change Percent:",
-            changePercent.toFixed(2) + "%"
+            changePercent.toFixed(2) + "%",
           );
 
           if (changePercent > 50) {
             throw BaseError.BadRequest(
               `Oylik to'lovni 50% dan ko'p o'zgartirish mumkin emas. ` +
                 `Hozirgi o'zgarish: ${changePercent.toFixed(1)}%\n` +
-                `Eski qiymat: ${change.oldValue}, Yangi qiymat: ${change.newValue}, Farq: ${change.difference}`
+                `Eski qiymat: ${change.oldValue}, Yangi qiymat: ${change.newValue}, Farq: ${change.difference}`,
             );
           }
         }
@@ -132,13 +133,13 @@ export class ContractEditHandler {
         const totalPrice =
           change.field === "totalPrice" ? change.newValue : contract.totalPrice;
         const initialPayment =
-          change.field === "initialPayment"
-            ? change.newValue
-            : contract.initialPayment;
+          change.field === "initialPayment" ?
+            change.newValue
+          : contract.initialPayment;
 
         if (totalPrice <= initialPayment) {
           throw BaseError.BadRequest(
-            "Umumiy narx boshlang'ich to'lovdan katta bo'lishi kerak"
+            "Umumiy narx boshlang'ich to'lovdan katta bo'lishi kerak",
           );
         }
       }
@@ -163,7 +164,7 @@ export class ContractEditHandler {
       oldValue: any;
       newValue: any;
       difference: number;
-    }>
+    }>,
   ): Promise<{
     underpaidCount: number;
     overpaidCount: number;
@@ -183,7 +184,7 @@ export class ContractEditHandler {
 
     // Faqat monthly payment o'zgarishi uchun tahlil qilish
     const monthlyPaymentChange = changes.find(
-      (c) => c.field === "monthlyPayment"
+      (c) => c.field === "monthlyPayment",
     );
 
     if (!monthlyPaymentChange) {
@@ -203,7 +204,9 @@ export class ContractEditHandler {
       return impact;
     }
 
-    logger.debug(`📋 Found ${paidMonthlyPayments.length} paid monthly payments`);
+    logger.debug(
+      `📋 Found ${paidMonthlyPayments.length} paid monthly payments`,
+    );
 
     // Har bir to'lov uchun diff hisoblash
     for (const payment of paidMonthlyPayments) {
@@ -217,7 +220,7 @@ export class ContractEditHandler {
         impact.additionalPaymentsCreated++;
 
         logger.debug(
-          `⚠️ Payment ${payment._id}: UNDERPAID by ${shortage.toFixed(2)}`
+          `⚠️ Payment ${payment._id}: UNDERPAID by ${shortage.toFixed(2)}`,
         );
       } else if (diff > 0.01) {
         // OVERPAID
@@ -226,7 +229,7 @@ export class ContractEditHandler {
         impact.totalExcess += excess;
 
         logger.debug(
-          `✅ Payment ${payment._id}: OVERPAID by ${excess.toFixed(2)}`
+          `✅ Payment ${payment._id}: OVERPAID by ${excess.toFixed(2)}`,
         );
       } else {
         logger.debug(`✓ Payment ${payment._id}: Exact match`);
@@ -252,17 +255,17 @@ export class ContractEditHandler {
     contract: any,
     originalPayment: any,
     amount: number,
-    paymentMonth: string
+    paymentMonth: string,
   ): Promise<any> {
     logger.debug(
-      `💰 Creating additional payment: ${amount} for ${paymentMonth}`
+      `💰 Creating additional payment: ${amount} for ${paymentMonth}`,
     );
 
     try {
       // 1. Notes yaratish
       const notes = await Notes.create({
         text: `Qo'shimcha to'lov: ${paymentMonth} oyi uchun oylik to'lov o'zgarishi tufayli ${amount.toFixed(
-          2
+          2,
         )} yetishmayapti.\n\nAsosiy to'lov: ${
           originalPayment.amount
         }\nYangi oylik to'lov: ${
@@ -308,7 +311,7 @@ export class ContractEditHandler {
   private async handleInitialPaymentChange(
     contract: any,
     diff: number,
-    user: IJwtUser
+    user: IJwtUser,
   ): Promise<Types.ObjectId | null> {
     logger.debug(`💰 Initial payment changed by: ${diff}`);
 
@@ -330,7 +333,7 @@ export class ContractEditHandler {
 
       // 3. Notes yangilash
       initialPayment.notes.text += `\n\n📝 [${new Date().toLocaleDateString(
-        "uz-UZ"
+        "uz-UZ",
       )}] Boshlang'ich to'lov o'zgartirildi: ${oldAmount} → ${
         initialPayment.amount
       }`;
@@ -340,18 +343,20 @@ export class ContractEditHandler {
       await initialPayment.notes.save();
 
       logger.debug(
-        `✅ Initial payment updated: ${oldAmount} → ${initialPayment.amount}`
+        `✅ Initial payment updated: ${oldAmount} → ${initialPayment.amount}`,
       );
 
       // 4. Balance'ni yangilash
       const customer = await Customer.findById(contract.customer).populate(
-        "manager"
+        "manager",
       );
       if (customer && customer.manager) {
         // Use balance helper from payment helper
         const { Balance } = await import("../../../schemas/balance.schema");
-        
-        let balance = await Balance.findOne({ managerId: customer.manager._id });
+
+        let balance = await Balance.findOne({
+          managerId: customer.manager._id,
+        });
         if (!balance) {
           balance = await Balance.create({
             managerId: customer.manager._id,
@@ -364,7 +369,7 @@ export class ContractEditHandler {
         }
 
         logger.debug(
-          `💵 Balance updated for manager: ${customer.manager._id}, diff: ${diff}`
+          `💵 Balance updated for manager: ${customer.manager._id}, diff: ${diff}`,
         );
       }
 
@@ -381,10 +386,10 @@ export class ContractEditHandler {
    */
   private async handleTotalPriceChange(
     contract: any,
-    newTotalPrice: number
+    newTotalPrice: number,
   ): Promise<void> {
     logger.debug(
-      `📊 Total price changed: ${contract.totalPrice} → ${newTotalPrice}`
+      `📊 Total price changed: ${contract.totalPrice} → ${newTotalPrice}`,
     );
 
     try {
@@ -413,7 +418,7 @@ export class ContractEditHandler {
   private async handleDebtorUpdate(
     contractId: Types.ObjectId,
     oldMonthlyPayment: number,
-    newMonthlyPayment: number
+    newMonthlyPayment: number,
   ): Promise<void> {
     logger.debug("📋 === UPDATING DEBTORS (OPTIMIZED) ===");
     logger.debug(`Contract ID: ${contractId}`);
@@ -428,7 +433,7 @@ export class ContractEditHandler {
           $set: {
             debtAmount: newMonthlyPayment,
           },
-        }
+        },
       );
 
       logger.debug(`✅ Batch updated ${result.modifiedCount} debtor(s)`);
@@ -446,7 +451,7 @@ export class ContractEditHandler {
   private async handleMonthlyPaymentChange(
     contract: any,
     oldAmount: number,
-    newAmount: number
+    newAmount: number,
   ): Promise<Types.ObjectId[]> {
     logger.debug(`📅 Monthly payment changed: ${oldAmount} → ${newAmount}`);
 
@@ -467,7 +472,7 @@ export class ContractEditHandler {
     }
 
     logger.debug(
-      `📋 Processing ${paidMonthlyPayments.length} paid monthly payments`
+      `📋 Processing ${paidMonthlyPayments.length} paid monthly payments`,
     );
 
     let cumulativeExcess = 0; // Jami ortiqcha summa (kaskad logika uchun)
@@ -506,9 +511,9 @@ export class ContractEditHandler {
           month: "long",
         });
         payment.notes.text += `\n\n⚠️ [${new Date().toLocaleDateString(
-          "uz-UZ"
+          "uz-UZ",
         )}] Oylik to'lov o'zgartirildi: ${oldAmount} → ${newAmount}. ${shortage.toFixed(
-          2
+          2,
         )} yetishmayapti.`;
         await payment.notes.save();
 
@@ -517,14 +522,14 @@ export class ContractEditHandler {
           contract,
           payment,
           shortage,
-          paymentDate
+          paymentDate,
         );
 
         affectedPayments.push(additionalPayment._id);
         cumulativeExcess = 0;
 
         logger.debug(
-          `⚠️ Payment ${i + 1}: UNDERPAID (shortage: ${shortage.toFixed(2)})`
+          `⚠️ Payment ${i + 1}: UNDERPAID (shortage: ${shortage.toFixed(2)})`,
         );
       } else {
         // KO'P TO'LANGAN (OVERPAID)
@@ -541,9 +546,9 @@ export class ContractEditHandler {
         });
 
         payment.notes.text += `\n\n✅ [${new Date().toLocaleDateString(
-          "uz-UZ"
+          "uz-UZ",
         )}] Oylik to'lov o'zgartirildi: ${oldAmount} → ${newAmount}. ${excess.toFixed(
-          2
+          2,
         )} ${nextMonthName} oyiga o'tkazildi.`;
         await payment.notes.save();
 
@@ -552,8 +557,8 @@ export class ContractEditHandler {
 
         logger.debug(
           `✅ Payment ${i + 1}: OVERPAID (excess: ${excess.toFixed(
-            2
-          )}, cumulative: ${cumulativeExcess.toFixed(2)})`
+            2,
+          )}, cumulative: ${cumulativeExcess.toFixed(2)})`,
         );
       }
 
@@ -567,7 +572,7 @@ export class ContractEditHandler {
       await contract.save();
 
       logger.debug(
-        `💰 Prepaid balance updated: ${contract.prepaidBalance.toFixed(2)}`
+        `💰 Prepaid balance updated: ${contract.prepaidBalance.toFixed(2)}`,
       );
     }
 
@@ -599,7 +604,7 @@ export class ContractEditHandler {
       totalExcess: number;
       additionalPaymentsCreated: number;
     },
-    user: IJwtUser
+    user: IJwtUser,
   ): Promise<void> {
     logger.info("📝 === SAVING EDIT HISTORY ===");
 
@@ -641,7 +646,7 @@ export class ContractEditHandler {
 
       logger.debug("✅ Edit history saved successfully");
       logger.debug(
-        `📊 Total edit history entries: ${contract.editHistory.length}`
+        `📊 Total edit history entries: ${contract.editHistory.length}`,
       );
     } catch (error) {
       logger.error("❌ Error saving edit history:", error);
@@ -652,7 +657,7 @@ export class ContractEditHandler {
   /**
    * Shartnoma yangilash - Main update method
    * Requirements: 1.1, 1.2, 1.3, 1.4, 1.5
-   * 
+   *
    * Bu metod barcha helper metodlarni integratsiya qiladi va
    * shartnoma tahrirlashning to'liq lifecycle'ini boshqaradi
    */
@@ -668,14 +673,14 @@ export class ContractEditHandler {
       const rateLimitCheck = checkRateLimit(user.sub, 10, 60000);
       if (!rateLimitCheck.allowed) {
         throw BaseError.BadRequest(
-          `Too many requests. Please try again in ${rateLimitCheck.retryAfter} seconds.`
+          `Too many requests. Please try again in ${rateLimitCheck.retryAfter} seconds.`,
         );
       }
 
       const authCheck = await verifyContractEditPermission(user.sub, data.id);
       if (!authCheck.authorized) {
         throw BaseError.ForbiddenError(
-          `Shartnomani tahrirlash uchun ruxsat yo'q: ${authCheck.reason}`
+          `Shartnomani tahrirlash uchun ruxsat yo'q: ${authCheck.reason}`,
         );
       }
 
@@ -689,7 +694,7 @@ export class ContractEditHandler {
 
       if (!inputValidation.valid) {
         throw BaseError.BadRequest(
-          `Input validation failed: ${inputValidation.errors.join(", ")}`
+          `Input validation failed: ${inputValidation.errors.join(", ")}`,
         );
       }
 
@@ -714,9 +719,9 @@ export class ContractEditHandler {
       }> = [];
 
       const monthlyPaymentDiff =
-        (data.monthlyPayment !== undefined
-          ? data.monthlyPayment
-          : contract.monthlyPayment) - contract.monthlyPayment;
+        (data.monthlyPayment !== undefined ?
+          data.monthlyPayment
+        : contract.monthlyPayment) - contract.monthlyPayment;
 
       if (monthlyPaymentDiff !== 0) {
         changes.push({
@@ -728,9 +733,9 @@ export class ContractEditHandler {
       }
 
       const initialPaymentDiff =
-        (data.initialPayment !== undefined
-          ? data.initialPayment
-          : contract.initialPayment) - contract.initialPayment;
+        (data.initialPayment !== undefined ?
+          data.initialPayment
+        : contract.initialPayment) - contract.initialPayment;
 
       if (initialPaymentDiff !== 0) {
         changes.push({
@@ -742,9 +747,9 @@ export class ContractEditHandler {
       }
 
       const totalPriceDiff =
-        (data.totalPrice !== undefined
-          ? data.totalPrice
-          : contract.totalPrice) - contract.totalPrice;
+        (data.totalPrice !== undefined ?
+          data.totalPrice
+        : contract.totalPrice) - contract.totalPrice;
 
       if (totalPriceDiff !== 0) {
         changes.push({
@@ -772,7 +777,7 @@ export class ContractEditHandler {
         const affected = await this.handleMonthlyPaymentChange(
           contract,
           contract.monthlyPayment,
-          data.monthlyPayment!
+          data.monthlyPayment!,
         );
         affectedPayments.push(...affected);
       }
@@ -781,7 +786,7 @@ export class ContractEditHandler {
         const affectedPaymentId = await this.handleInitialPaymentChange(
           contract,
           initialPaymentDiff,
-          user
+          user,
         );
         if (affectedPaymentId) {
           affectedPayments.push(affectedPaymentId);
@@ -827,32 +832,31 @@ export class ContractEditHandler {
           changes,
           affectedPayments,
           impactSummary,
-          user
+          user,
         );
       }
 
       await contract.save();
 
-      // 8. Audit log
-      const employee = await Employee.findById(user.sub).select(
-        "firstName lastName"
-      );
-      await createAuditLog({
-        timestamp: new Date(),
-        userId: user.sub,
-        userName: employee
-          ? `${employee.firstName} ${employee.lastName}`
-          : "Unknown",
-        action: "CONTRACT_UPDATE",
-        resourceType: "Contract",
-        resourceId: data.id,
-        changes: changes.map((c) => ({
-          field: c.field,
-          oldValue: c.oldValue,
-          newValue: c.newValue,
-        })),
-        success: true,
-      });
+      // 8. Audit log (AuditLog MongoDB ga yozish)
+      if (changes.length > 0) {
+        const customer = await Customer.findById(contract.customer).select(
+          "fullName",
+        );
+        const customerName = customer?.fullName || "Noma'lum mijoz";
+        await auditLogService.logContractUpdate(
+          data.id,
+          contract.customer.toString(),
+          customerName,
+          changes.map((c) => ({
+            field: c.field,
+            oldValue: c.oldValue,
+            newValue: c.newValue,
+          })),
+          user.sub,
+          affectedPayments.map((id) => id.toString()),
+        );
+      }
 
       logger.debug("🎉 CONTRACT UPDATE COMPLETED");
 
@@ -865,26 +869,7 @@ export class ContractEditHandler {
     } catch (error) {
       logger.error("❌ CONTRACT UPDATE FAILED:", error);
 
-      try {
-        const employee = await Employee.findById(user.sub).select(
-          "firstName lastName"
-        );
-        await createAuditLog({
-          timestamp: new Date(),
-          userId: user.sub,
-          userName: employee
-            ? `${employee.firstName} ${employee.lastName}`
-            : "Unknown",
-          action: "CONTRACT_UPDATE",
-          resourceType: "Contract",
-          resourceId: data.id,
-          changes: [],
-          success: false,
-          errorMessage: error instanceof Error ? error.message : String(error),
-        });
-      } catch (auditError) {
-        logger.error("❌ Failed to create audit log:", auditError);
-      }
+      // Xato bo'lganda audit log yozmaymiz (asosiy xato muhimroq)
 
       throw error;
     }

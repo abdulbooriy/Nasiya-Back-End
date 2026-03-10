@@ -4,6 +4,7 @@ import { Permission } from "../enums/permission.enum";
 import { IAuth } from "./auth.schema";
 import { IRole } from "./role.schema";
 import { BaseSchema, IBase } from "./base.schema";
+
 export interface IEmployee extends IBase {
   firstName: string;
   lastName: string;
@@ -41,7 +42,7 @@ const EmployeeSchema: Schema<IEmployee> = new Schema<IEmployee>(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 const Employee = model<IEmployee>("Employee", EmployeeSchema);

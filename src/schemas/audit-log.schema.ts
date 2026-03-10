@@ -19,13 +19,14 @@ export enum AuditAction {
 
 export enum AuditEntity {
   CUSTOMER = "customer",
-  CONTRACT = "contract", 
+  CONTRACT = "contract",
   PAYMENT = "payment",
   EMPLOYEE = "employee",
   BALANCE = "balance",
   AUTH = "auth",
   EXCEL_IMPORT = "excel_import",
-  EXPENSES = "expenses"
+  EXPENSES = "expenses",
+  DEBTOR = "debtor"
 }
 
 export interface IAuditMetadata {

@@ -37,4 +37,3 @@ uploads/
 # MongoDB backup files (eski, kerak emas)
 backups/
 *.tar.gz
-
